@@ -19,21 +19,27 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use crate::weights::WeightInfo;
-use frame_support::pallet_prelude::*;
-use frame_support::traits::{
-	fungible::Inspect, Currency, ExistenceRequirement, Randomness, ReservableCurrency,
+use frame_support::{
+	pallet_prelude::*,
+	traits::{Currency, ExistenceRequirement, Randomness, ReservableCurrency},
+	transactional,
 };
 use frame_system::pallet_prelude::*;
 pub use gafi_primitives::{
 	constant::ID,
+	custom_services::{CustomPool, CustomService},
 	name::Name,
-	pool::{Level, Service, StaticPool, StaticService},
+	pool::Service,
+	ticket::TicketLevel,
 };
+use gu_convertor::{balance_try_to_u128, into_account};
+use gu_currency::transfer_all;
 pub use pallet::*;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 use sp_core::H160;
 use sp_io::hashing::blake2_256;
+use sp_runtime::Permill;
 use sp_std::vec::Vec;
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -44,7 +50,7 @@ struct SponsoredPool<AccountId> {
 	pub id: ID,
 	pub owner: AccountId,
 	pub value: u128,
-	pub discount: u8,
+	pub discount: Permill,
 	pub tx_limit: u32,
 }
 
@@ -63,7 +69,7 @@ pub use weights::*;
 #[frame_support::pallet]
 pub mod pallet {
 
-use super::*;
+	use super::*;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -86,6 +92,26 @@ use super::*;
 
 		/// Manage pool name
 		type PoolName: Name<Self::AccountId>;
+
+		/// The minimum balance owner have to deposit when creating the pool
+		#[pallet::constant]
+		type MinPoolBalance: Get<u128>;
+
+		/// The minimum discount percent when creating the pool
+		#[pallet::constant]
+		type MinDiscountPercent: Get<Permill>;
+
+		///The maximum discount percent when creating the pool
+		#[pallet::constant]
+		type MaxDiscountPercent: Get<Permill>;
+
+		/// The minimum tx limit when creating the pool
+		#[pallet::constant]
+		type MinTxLimit: Get<u32>;
+
+		///The maximum tx limit when creating the pool
+		#[pallet::constant]
+		type MaxTxLimit: Get<u32>;
 
 		/// The maximum number of pool that sponsor can create
 		#[pallet::constant]
@@ -130,8 +156,6 @@ use super::*;
 	pub enum Error<T> {
 		/// Generate the pool id that duplicated
 		PoolIdExisted,
-		/// Can not convert u128 to balance
-		ConvertBalanceFail,
 		/// Can not convert pool id to account
 		IntoAccountFail,
 		IntoU32Fail,
@@ -140,11 +164,15 @@ use super::*;
 		PoolNotExist,
 		ExceedMaxPoolOwned,
 		ExceedPoolTarget,
+		NotReachMinPoolBalance,
+		LessThanMinTxLimit,
+		GreaterThanMaxTxLimit,
+		LessThanMinDiscountPercent,
+		GreaterThanMinDiscountPercent,
 	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-
 		/// Create Pool
 		///
 		/// Create new pool and deposit amount of `value` to the pool,
@@ -158,23 +186,45 @@ use super::*;
 		///
 		/// Weight: `O(1)`
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::create_pool(50u32))]
+		#[transactional]
 		pub fn create_pool(
 			origin: OriginFor<T>,
 			targets: Vec<H160>,
 			value: BalanceOf<T>,
-			discount: u8,
+			discount: Permill,
 			tx_limit: u32,
 		) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
 			let pool_config = Self::new_pool()?;
 			ensure!(
-				Pools::<T>::get(pool_config.id) == None,
+				Pools::<T>::get(pool_config.id).is_none(),
 				<Error<T>>::PoolIdExisted
 			);
 			ensure!(
 				T::Currency::free_balance(&sender) > value,
 				pallet_balances::Error::<T>::InsufficientBalance
+			);
+			ensure!(
+				balance_try_to_u128::<<T as pallet::Config>::Currency, T::AccountId>(value)?
+					>= T::MinPoolBalance::get(),
+				Error::<T>::NotReachMinPoolBalance
+			);
+			ensure!(
+				tx_limit >= T::MinTxLimit::get(),
+				Error::<T>::LessThanMinTxLimit
+			);
+			ensure!(
+				tx_limit <= T::MaxTxLimit::get(),
+				Error::<T>::GreaterThanMaxTxLimit
+			);
+			ensure!(
+				discount >= T::MinDiscountPercent::get(),
+				Error::<T>::LessThanMinDiscountPercent
+			);
+			ensure!(
+				discount <= T::MaxDiscountPercent::get(),
+				Error::<T>::GreaterThanMinDiscountPercent
 			);
 			ensure! {
 				Self::usize_try_to_u32(targets.len())? <= T::MaxPoolTarget::get(),
@@ -184,7 +234,7 @@ use super::*;
 			let new_pool = SponsoredPool {
 				id: pool_config.id,
 				owner: sender.clone(),
-				value: Self::balance_try_to_u128(value)?,
+				value: balance_try_to_u128::<<T as pallet::Config>::Currency, T::AccountId>(value)?,
 				discount,
 				tx_limit,
 			};
@@ -200,8 +250,7 @@ use super::*;
 				.map_err(|_| <Error<T>>::ExceedMaxPoolOwned)?;
 			Targets::<T>::try_mutate(pool_config.id, |target_vec| {
 				for target in targets {
-					if let Ok(_) = target_vec.try_push(target) {
-					} else {
+					if target_vec.try_push(target).is_err() {
 						return Err(());
 					}
 				}
@@ -225,6 +274,7 @@ use super::*;
 		///
 		/// Weight: `O(1)`
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::withdraw_pool(50u32))]
+		#[transactional]
 		pub fn withdraw_pool(origin: OriginFor<T>, pool_id: ID) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
@@ -233,20 +283,24 @@ use super::*;
 				Self::is_pool_owner(&pool_id, &sender)?,
 				<Error<T>>::NotTheOwner
 			);
-			let pool = Self::into_account(pool_id)?;
-			Self::transfer_all(&pool, &sender, false)?;
-			PoolOwned::<T>::try_mutate(&sender, |pool_owned| {
-				if let Some(ind) = pool_owned.iter().position(|&id| id == pool_id) {
-					pool_owned.swap_remove(ind);
-					return Ok(());
-				}
-				Err(())
-			})
-			.map_err(|_| <Error<T>>::PoolNotExist)?;
-			Pools::<T>::remove(pool_id);
-			Targets::<T>::remove(pool_id);
-			Self::deposit_event(Event::Withdrew { id: pool_id });
-			Ok(())
+
+			if let Some(pool) = into_account::<T::AccountId>(pool_id) {
+				transfer_all::<T, <T as pallet::Config>::Currency>(&pool, &sender, false)?;
+				PoolOwned::<T>::try_mutate(&sender, |pool_owned| {
+					if let Some(ind) = pool_owned.iter().position(|&id| id == pool_id) {
+						pool_owned.swap_remove(ind);
+						return Ok(());
+					}
+					Err(())
+				})
+				.map_err(|_| <Error<T>>::PoolNotExist)?;
+				Pools::<T>::remove(pool_id);
+				Targets::<T>::remove(pool_id);
+				Self::deposit_event(Event::Withdrew { id: pool_id });
+				Ok(())
+			} else {
+				Err(Error::<T>::IntoAccountFail.into())
+			}
 		}
 
 		/// New Targets
@@ -279,8 +333,7 @@ use super::*;
 			Targets::<T>::insert(pool_id, BoundedVec::default());
 			Targets::<T>::try_mutate(&pool_id, |target_vec| {
 				for target in targets {
-					if let Ok(_) = target_vec.try_push(target) {
-					} else {
+					if target_vec.try_push(target).is_err() {
 						return Err(());
 					}
 				}
@@ -292,12 +345,8 @@ use super::*;
 		}
 
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::set_pool_name(50u32))]
-		pub fn set_pool_name(
-			origin: OriginFor<T>,
-			pool_id: ID,
-			name: Vec<u8>,
-		) -> DispatchResult {
-			let sender = ensure_signed(origin.clone())?;
+		pub fn set_pool_name(origin: OriginFor<T>, pool_id: ID, name: Vec<u8>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
 
 			ensure!(Pools::<T>::get(pool_id) != None, <Error<T>>::PoolNotExist);
 			ensure!(
@@ -311,11 +360,8 @@ use super::*;
 		}
 
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::clear_pool_name(50u32))]
-		pub fn clear_pool_name(
-			origin: OriginFor<T>,
-			pool_id: ID,
-		) -> DispatchResult {
-			let sender = ensure_signed(origin.clone())?;
+		pub fn clear_pool_name(origin: OriginFor<T>, pool_id: ID) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
 
 			ensure!(Pools::<T>::get(pool_id) != None, <Error<T>>::PoolNotExist);
 			ensure!(
@@ -329,18 +375,14 @@ use super::*;
 		}
 
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::kill_pool_name(50u32))]
-		pub fn kill_pool_name(
-			origin: OriginFor<T>,
-			pool_id: ID,
-		) -> DispatchResult {
-			ensure_root(origin.clone())?;
+		pub fn kill_pool_name(origin: OriginFor<T>, pool_id: ID) -> DispatchResult {
+			ensure_root(origin)?;
 
 			match Pools::<T>::get(pool_id) {
 				None => Err(<Error<T>>::PoolNotExist.into()),
 				Some(pool) => Ok(T::PoolName::kill_name(pool.owner, pool_id)?),
 			}
 		}
-
 	}
 
 	impl<T: Config> Pallet<T> {
@@ -360,48 +402,11 @@ use super::*;
 			}
 		}
 
-		fn into_account(id: ID) -> Result<T::AccountId, Error<T>> {
-			match T::AccountId::decode(&mut &id[..]) {
-				Ok(account) => Ok(account),
-				Err(_) => Err(<Error<T>>::IntoAccountFail),
-			}
-		}
-
 		fn usize_try_to_u32(input: usize) -> Result<u32, Error<T>> {
 			match input.try_into().ok() {
 				Some(val) => Ok(val),
 				None => Err(<Error<T>>::IntoU32Fail),
 			}
-		}
-
-		fn balance_try_to_u128(input: BalanceOf<T>) -> Result<u128, Error<T>> {
-			match input.try_into().ok() {
-				Some(val) => Ok(val),
-				None => Err(<Error<T>>::ConvertBalanceFail),
-			}
-		}
-
-		fn transfer_all(
-			from: &T::AccountId,
-			to: &T::AccountId,
-			keep_alive: bool,
-		) -> DispatchResult {
-			let reducible_balance: u128 =
-				pallet_balances::pallet::Pallet::<T>::reducible_balance(from, keep_alive)
-					.try_into()
-					.ok()
-					.unwrap();
-			let existence = if keep_alive {
-				ExistenceRequirement::KeepAlive
-			} else {
-				ExistenceRequirement::AllowDeath
-			};
-			<T as pallet::Config>::Currency::transfer(
-				from,
-				to,
-				reducible_balance.try_into().ok().unwrap(),
-				existence,
-			)
 		}
 
 		fn is_pool_owner(pool_id: &ID, owner: &T::AccountId) -> Result<bool, Error<T>> {
@@ -412,18 +417,19 @@ use super::*;
 		}
 	}
 
-	impl<T: Config> StaticPool<T::AccountId> for Pallet<T> {
-		fn join(_sender: T::AccountId, _pool_id: ID) -> DispatchResult {
+	impl<T: Config> CustomPool<T::AccountId> for Pallet<T> {
+		fn join(_sender: T::AccountId, pool_id: ID) -> DispatchResult {
+			ensure!(Pools::<T>::get(pool_id).is_some(), Error::<T>::PoolNotExist);
 			Ok(())
 		}
 		fn leave(_sender: T::AccountId) -> DispatchResult {
 			Ok(())
 		}
 
-		fn get_service(pool_id: ID) -> Option<StaticService<T::AccountId>> {
+		fn get_service(pool_id: ID) -> Option<CustomService<T::AccountId>> {
 			if let Some(pool) = Pools::<T>::get(pool_id) {
 				let targets = Targets::<T>::get(pool_id);
-				return Some(StaticService::new(
+				return Some(CustomService::new(
 					targets.to_vec(),
 					pool.tx_limit,
 					pool.discount,
@@ -431,6 +437,24 @@ use super::*;
 				));
 			}
 			None
+		}
+
+		/// Add new sponsored-pool with default values, return pool_id
+		///
+		/// ** Should be used for benchmarking only!!! **
+		#[cfg(feature = "runtime-benchmarks")]
+		fn add_default(owner: T::AccountId, pool_id: ID) {
+			let sponsored_pool = SponsoredPool {
+				id: pool_id,
+				owner: owner.clone(),
+				value: 0_u128,
+				discount: Permill::from_percent(0),
+				tx_limit: 0_u32,
+			};
+
+			Pools::<T>::insert(pool_id, sponsored_pool);
+			PoolOwned::<T>::try_mutate(&owner, |pool_vec| pool_vec.try_push(pool_id))
+				.map_err(|_| <Error<T>>::ExceedMaxPoolOwned);
 		}
 	}
 }

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use frame_support::{
 	dispatch::Vec,
-	traits::{Currency, OnFinalize, OnInitialize, ConstU32},
+	traits::{ConstU32, Currency, OnFinalize, OnInitialize},
 };
 use frame_support::{
 	parameter_types,
@@ -11,9 +11,15 @@ use frame_support::{
 };
 use frame_system as system;
 use gafi_primitives::currency::{centi, unit, NativeToken::GAKI};
-use gafi_primitives::pool::{FlexService, Level, Service, TicketType};
+use gafi_primitives::ticket::TicketInfo;
+use gafi_primitives::{
+	pool::Service,
+	system_services::SystemService,
+	ticket::{TicketLevel, TicketType},
+};
 use gafi_tx::GafiEVMCurrencyAdapter;
 use hex_literal::hex;
+pub use pallet_balances::Call as BalancesCall;
 use pallet_evm::{EnsureAddressNever, EnsureAddressRoot};
 use pallet_timestamp;
 use pallet_transaction_payment::CurrencyAdapter;
@@ -21,10 +27,8 @@ use sp_core::{H160, H256, U256};
 use sp_runtime::{
 	testing::Header,
 	traits::{BlakeTwo256, IdentityLookup},
-	AccountId32,
+	AccountId32, Permill,
 };
-use gafi_primitives::player::TicketInfo;
-pub use pallet_balances::Call as BalancesCall;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -164,6 +168,11 @@ impl staking_pool::Config for Test {
 parameter_types! {
 	pub MaxPoolOwned: u32 =  10;
 	pub MaxPoolTarget: u32 = 10;
+	pub MinPoolBalance: u128 = 1000 * unit(GAKI);
+	pub MinDiscountPercent: Permill = Permill::from_percent(10);
+	pub MaxDiscountPercent: Permill = Permill::from_percent(70);
+	pub MinTxLimit: u32 = 10;
+	pub MaxTxLimit: u32 = 100;
 }
 
 impl sponsored_pool::Config for Test {
@@ -173,6 +182,11 @@ impl sponsored_pool::Config for Test {
 	type PoolName = PoolNames;
 	type MaxPoolOwned = MaxPoolOwned;
 	type MaxPoolTarget = MaxPoolTarget;
+	type MinDiscountPercent = MinDiscountPercent;
+	type MaxDiscountPercent = MaxDiscountPercent;
+	type MinTxLimit = MinTxLimit;
+	type MaxTxLimit = MaxTxLimit;
+	type MinPoolBalance = MinPoolBalance;
 	type WeightInfo = ();
 }
 
@@ -225,7 +239,6 @@ impl pallet_pool_names::Config for Test {
 	type MaxLength = ConstU32<16>;
 }
 
-
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
 	pub const SS58Prefix: u8 = 24;
@@ -259,7 +272,7 @@ impl system::Config for Test {
 }
 
 parameter_types! {
-	pub GameCreatorReward: u8 = 30u8;
+	pub GameCreatorReward: Permill = Permill::from_percent(30);
 }
 
 impl gafi_tx::Config for Test {
@@ -299,8 +312,8 @@ pub struct ExtBuilder {
 	balances: Vec<(AccountId32, u128)>,
 	pub max_player: u32,
 	pub time_service: u128,
-	pub upfront_services: [(Level, FlexService); 3],
-	pub staking_services: [(Level, FlexService); 3],
+	pub upfront_services: [(TicketLevel, SystemService); 3],
+	pub staking_services: [(TicketLevel, SystemService); 3],
 }
 
 impl Default for ExtBuilder {
@@ -311,30 +324,30 @@ impl Default for ExtBuilder {
 			time_service: TIME_SERVICE,
 			upfront_services: [
 				(
-					Level::Basic,
-					FlexService::new(100_u32, 30_u8, 5 * unit(GAKI)),
+					TicketLevel::Basic,
+					SystemService::new(100_u32, Permill::from_percent(30), 5 * unit(GAKI)),
 				),
 				(
-					Level::Medium,
-					FlexService::new(100_u32, 50_u8, 7 * unit(GAKI)),
+					TicketLevel::Medium,
+					SystemService::new(100_u32, Permill::from_percent(50), 7 * unit(GAKI)),
 				),
 				(
-					Level::Advance,
-					FlexService::new(100_u32, 70_u8, 10 * unit(GAKI)),
+					TicketLevel::Advance,
+					SystemService::new(100_u32, Permill::from_percent(70), 10 * unit(GAKI)),
 				),
 			],
 			staking_services: [
 				(
-					Level::Basic,
-					FlexService::new(100_u32, 30_u8, 1000 * unit(GAKI)),
+					TicketLevel::Basic,
+					SystemService::new(100_u32, Permill::from_percent(30), 1000 * unit(GAKI)),
 				),
 				(
-					Level::Medium,
-					FlexService::new(100_u32, 50_u8, 1500 * unit(GAKI)),
+					TicketLevel::Medium,
+					SystemService::new(100_u32, Permill::from_percent(50), 1500 * unit(GAKI)),
 				),
 				(
-					Level::Advance,
-					FlexService::new(100_u32, 70_u8, 2000 * unit(GAKI)),
+					TicketLevel::Advance,
+					SystemService::new(100_u32, Permill::from_percent(70), 2000 * unit(GAKI)),
 				),
 			],
 		}

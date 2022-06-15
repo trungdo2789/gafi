@@ -6,8 +6,7 @@ use frame_support::{
 	dispatch::Vec,
 	traits::{Currency, OnFinalize, OnInitialize},
 };
-pub use gafi_primitives::{player::TicketInfo,
-	pool::TicketType,
+pub use gafi_primitives::{ticket::{TicketInfo, TicketType},
 };
 pub use pallet_balances::Call as BalancesCall;
 use sp_core::H256;
@@ -159,6 +158,8 @@ impl ExtBuilder {
 		GenesisBuild::<Test>::assimilate_storage(
 			&pallet_cache::GenesisConfig {
 				clean_time: self.time_service,
+				phantom: Default::default(),
+				phantom_i: Default::default()
 			},
 			&mut storage,
 		)

@@ -21,13 +21,17 @@
 use frame_support::{
 	pallet_prelude::*,
 	traits::{Currency, ReservableCurrency},
+	transactional
 };
 use frame_system::pallet_prelude::*;
 use gafi_primitives::{
-	pool::{FlexPool, FlexService, Level, Service, Ticket, TicketType},
+	ticket::{TicketLevel, Ticket, TicketType, SystemTicket},
+	system_services::{SystemPool, SystemService},
 };
 pub use pallet::*;
 use pallet_timestamp::{self as timestamp};
+use gu_convertor::{u128_try_to_balance};
+use sp_runtime::Permill;
 
 #[cfg(test)]
 mod mock;
@@ -45,7 +49,6 @@ pub use weights::*;
 pub mod pallet {
 	use super::*;
 	use frame_support::{dispatch::DispatchResult};
-	use gafi_primitives::pool::FlexPool;
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
@@ -59,7 +62,7 @@ pub mod pallet {
 	pub trait Config: frame_system::Config + pallet_timestamp::Config {
 		/// The overarching event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		
+
 		/// The currency mechanism.
 		type Currency: ReservableCurrency<Self::AccountId>;
 
@@ -85,12 +88,12 @@ pub mod pallet {
 	/// Holding the services to serve to players, means service detail can change on runtime
 	#[pallet::storage]
 	#[pallet::getter(fn services)]
-	pub type Services<T: Config> = StorageMap<_, Twox64Concat, Level, FlexService>;
+	pub type Services<T: Config> = StorageMap<_, Twox64Concat, TicketLevel, SystemService>;
 
 	//** Genesis Conguration **//
 	#[pallet::genesis_config]
 	pub struct GenesisConfig {
-		pub services: [(Level, FlexService); 3],
+		pub services: [(TicketLevel, SystemService); 3],
 	}
 
 	#[cfg(feature = "std")]
@@ -98,9 +101,9 @@ pub mod pallet {
 		fn default() -> Self {
 			Self {
 				services: [
-					(Level::Basic, FlexService::new(100_u32, 30_u8, 100000u128)),
-					(Level::Medium, FlexService::new(100_u32, 50_u8, 100000u128)),
-					(Level::Advance,  FlexService::new(100_u32, 70_u8, 100000u128)),
+					(TicketLevel::Basic, SystemService::new(100_u32, Permill::from_percent(30), 100000u128)),
+					(TicketLevel::Medium, SystemService::new(100_u32, Permill::from_percent(50), 100000u128)),
+					(TicketLevel::Advance,  SystemService::new(100_u32, Permill::from_percent(70), 100000u128)),
 				],
 			}
 		}
@@ -129,7 +132,7 @@ pub mod pallet {
 		LevelNotFound,
 	}
 
-	impl<T: Config> FlexPool<T::AccountId> for Pallet<T> {
+	impl<T: Config> SystemPool<T::AccountId> for Pallet<T> {
 			/// Join Staking Pool
 		///
 		/// The origin must be Signed
@@ -138,9 +141,10 @@ pub mod pallet {
 		/// - `level`: The level of ticket Basic - Medium - Advance
 		///
 		/// Weight: `O(1)`
-		fn join(sender: T::AccountId, level: Level) -> DispatchResult {
+		#[transactional]
+		fn join(sender: T::AccountId, level: TicketLevel) -> DispatchResult {
 			let service = Self::get_service_by_level(level)?;
-			let staking_amount = Self::u128_try_to_balance(service.value)?;
+			let staking_amount = u128_try_to_balance::<<T as pallet::Config>::Currency, T::AccountId>(service.value)?;
 			<T as pallet::Config>::Currency::reserve(&sender, staking_amount)?;
 
 			let new_player_count =
@@ -155,12 +159,13 @@ pub mod pallet {
 		/// The origin must be Signed
 		///
 		/// Weight: `O(1)`
+		#[transactional]
 		fn leave(sender: T::AccountId) -> DispatchResult {
 			if let Some(level) = Self::get_player_level(sender.clone()) {
 				let new_player_count =
 					Self::player_count().checked_sub(1).ok_or(<Error<T>>::StakeCountOverflow)?;
 				let service = Self::get_service_by_level(level)?;
-				let staking_amount = Self::u128_try_to_balance(service.value)?;
+				let staking_amount = u128_try_to_balance::<<T as pallet::Config>::Currency, T::AccountId>(service.value)?;
 				<T as pallet::Config>::Currency::unreserve(&sender, staking_amount);
 				Self::unstake_pool(sender, new_player_count);
 				Ok(())
@@ -169,7 +174,7 @@ pub mod pallet {
 			}
 		}
 
-		fn get_service(level: Level) -> Option<FlexService> {
+		fn get_service(level: TicketLevel) -> Option<SystemService> {
 			Services::<T>::get(level)
 		}
 	}
@@ -199,13 +204,13 @@ pub mod pallet {
 
 
 	impl<T: Config> Pallet<T> {
-		fn stake_pool(sender: T::AccountId, new_player_count: u32, level: Level) {
+		fn stake_pool(sender: T::AccountId, new_player_count: u32, level: TicketLevel) {
 			let _now = Self::moment_to_u128(<timestamp::Pallet<T>>::get());
 			<PlayerCount<T>>::put(new_player_count);
 			let ticket = Ticket {
 				address: sender.clone(),
 				join_time: _now,
-				ticket_type: TicketType::Staking(level),
+				ticket_type: TicketType::System(SystemTicket::Staking(level)),
 			};
 			Tickets::<T>::insert(sender, ticket);
 		}
@@ -219,17 +224,10 @@ pub mod pallet {
 			sp_runtime::SaturatedConversion::saturated_into(input)
 		}
 
-		pub fn u128_try_to_balance(input: u128) -> Result<BalanceOf<T>, Error<T>> {
-			match input.try_into().ok() {
-				Some(val) => Ok(val),
-				None => Err(<Error<T>>::IntoBalanceFail),
-			}
-		}
-
-		fn get_player_level(player: T::AccountId) -> Option<Level> {
+		fn get_player_level(player: T::AccountId) -> Option<TicketLevel> {
 			match Tickets::<T>::get(player) {
 				Some(ticket) => {
-					if let TicketType::Staking(level) = ticket.ticket_type {
+					if let TicketType::System(SystemTicket::Staking(level)) = ticket.ticket_type {
 						Some(level)
 					} else {
 						None
@@ -239,7 +237,7 @@ pub mod pallet {
 			}
 		}
 
-		fn get_service_by_level(level: Level) -> Result<FlexService, Error<T>> {
+		fn get_service_by_level(level: TicketLevel) -> Result<SystemService, Error<T>> {
 			match Services::<T>::get(level) {
 				Some(service) => Ok(service),
 				None => Err(<Error<T>>::LevelNotFound),

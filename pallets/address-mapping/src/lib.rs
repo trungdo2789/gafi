@@ -22,6 +22,7 @@ use frame_support::{
 	pallet_prelude::*,
 	traits::{fungible::Inspect, Currency, ExistenceRequirement, Get, ReservableCurrency},
 	Twox64Concat,
+	transactional,
 };
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -29,7 +30,9 @@ use pallet_evm::AddressMapping;
 use sp_core::crypto::AccountId32;
 use sp_core::H160;
 use sp_io::hashing::blake2_256;
-use utils::{eth_recover, to_ascii_hex, EcdsaSignature, EthereumAddress};
+use gu_ethereum::{eth_recover, to_ascii_hex, EcdsaSignature, EthereumAddress};
+use gu_convertor::into_account;
+use gu_currency::transfer_all;
 
 #[cfg(test)]
 mod mock;
@@ -126,6 +129,7 @@ pub mod pallet {
 		///
 		/// Weight: `O(1)`
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::bond(100u32))]
+		#[transactional]
 		pub fn bond(
 			origin: OriginFor<T>,
 			signature: [u8; 65],
@@ -136,19 +140,21 @@ pub mod pallet {
 			let account_id: AccountId32 = sender.clone().into();
 
 			ensure!(
-				Id32Mapping::<T>::get(account_id.clone()) == None
-					&& H160Mapping::<T>::get(address) == None,
+				Id32Mapping::<T>::get(account_id.clone()).is_none()
+					&& H160Mapping::<T>::get(address).is_none(),
 				<Error<T>>::AlreadyBond
 			);
 			ensure!(
 				Self::verify_bond(sender.clone(), signature, address.to_fixed_bytes()),
 				<Error<T>>::SignatureOrAddressNotCorrect,
 			);
+
 			<T as pallet::Config>::Currency::reserve(&sender, T::ReservationFee::get())?;
+
 			if withdraw {
 				let id = Self::into_account_id(address);
-				if let Some(from) = Self::into_account(id) {
-					Self::transfer_all(from, sender.clone(), true)?;
+				if let Some(from) = into_account::<T::AccountId>(id.into()) {
+					transfer_all::<T, <T as pallet::Config>::Currency>(&from, &sender, true)?;
 				}
 			}
 
@@ -166,14 +172,16 @@ pub mod pallet {
 		///
 		/// Weight: `O(1)`
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::unbond(100u32))]
+		#[transactional]
 		pub fn unbond(origin: OriginFor<T>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 			let account_id: AccountId32 = sender.clone().into();
 
 			let evm_address = <Id32Mapping<T>>::get(account_id);
-			ensure!(evm_address != None, <Error<T>>::NonbondAccount);
+			ensure!(evm_address.is_some(), <Error<T>>::NonbondAccount);
 			let id32_address = <H160Mapping<T>>::get(evm_address.unwrap());
-			ensure!(id32_address != None, <Error<T>>::NonbondAccount);
+			ensure!(id32_address.is_some(), <Error<T>>::NonbondAccount);
+
 			<T as pallet::Config>::Currency::unreserve(&sender, T::ReservationFee::get());
 
 			Self::remove_pair_bond(evm_address.unwrap(), id32_address.unwrap());
@@ -193,25 +201,6 @@ where
 		let who = sender.using_encoded(to_ascii_hex);
 		let signer = eth_recover(&sig_converter, &who, &[][..], T::MessagePrefix::get());
 		signer == Some(address_convert)
-	}
-
-	pub fn transfer_all(from: T::AccountId, to: T::AccountId, keep_alive: bool) -> DispatchResult {
-		let reducible_balance: u128 =
-			pallet_balances::pallet::Pallet::<T>::reducible_balance(&from, keep_alive)
-				.try_into()
-				.ok()
-				.unwrap();
-		let existence = if keep_alive {
-			ExistenceRequirement::KeepAlive
-		} else {
-			ExistenceRequirement::AllowDeath
-		};
-		<T as pallet::Config>::Currency::transfer(
-			&from,
-			&to,
-			reducible_balance.try_into().ok().unwrap(),
-			existence,
-		)
 	}
 
 	pub fn get_evm_address(account_id: AccountId32) -> Option<H160> {
@@ -262,13 +251,6 @@ where
 		<Id32Mapping<T>>::remove(origin_account_id);
 	}
 
-	pub fn into_account(id: AccountId32) -> Option<T::AccountId> {
-		let bytes: [u8; 32] = id.into();
-		match T::AccountId::decode(&mut &bytes[..]) {
-			Ok(acc) => Some(acc),
-			Err(_) => None,
-		}
-	}
 }
 
 struct OriginAddressMapping;

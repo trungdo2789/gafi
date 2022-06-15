@@ -8,10 +8,13 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::Parameter;
+use pallet_faucet::FaucetAmount;
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
+use scale_info::TypeInfo;
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{
@@ -57,8 +60,7 @@ pub use sp_runtime::{Perbill, Permill};
 pub use gafi_primitives::{
 	cache::Cache,
 	currency::{centi, microcent, milli, unit, NativeToken::GAKI},
-	player::TicketInfo,
-	pool::TicketType,
+	ticket::{TicketInfo, TicketType},
 };
 use sp_std::if_std;
 
@@ -408,6 +410,11 @@ impl staking_pool::Config for Runtime {
 }
 
 parameter_types! {
+	pub MinPoolBalance: u128 = 1000 * unit(GAKI);
+	pub MinDiscountPercent: Permill = Permill::from_percent(30);
+	pub MaxDiscountPercent: Permill = Permill::from_percent(70);
+	pub MinTxLimit: u32 = 50;
+	pub MaxTxLimit: u32 = 100;
 	pub MaxPoolOwned: u32 =  10;
 	pub MaxPoolTarget: u32 =  10;
 }
@@ -417,6 +424,11 @@ impl sponsored_pool::Config for Runtime {
 	type Randomness = RandomnessCollectiveFlip;
 	type PoolName = PoolName;
 	type Currency = Balances;
+	type MinPoolBalance = MinPoolBalance;
+	type MinDiscountPercent = MinDiscountPercent;
+	type MaxDiscountPercent = MaxDiscountPercent;
+	type MinTxLimit = MinTxLimit;
+	type MaxTxLimit = MaxTxLimit;
 	type MaxPoolOwned = MaxPoolOwned;
 	type MaxPoolTarget = MaxPoolTarget;
 	type WeightInfo = sponsored_pool::weights::SponsoredWeight<Runtime>;
@@ -436,7 +448,7 @@ impl proof_address_mapping::Config for Runtime {
 }
 
 parameter_types! {
-	pub GameCreatorReward: u8 = 30;
+	pub GameCreatorReward: Permill = Permill::from_percent(30);
 }
 
 impl gafi_tx::Config for Runtime {
@@ -451,6 +463,19 @@ impl gafi_tx::Config for Runtime {
 
 parameter_types! {
 	pub MaxGenesisAccount: u32 = 5;
+
+}
+
+impl pallet_cache::Config<pallet_cache::Instance1> for Runtime {
+	type Event = Event;
+	type Data = Balance;
+	type Action = AccountId;
+}
+
+impl pallet_cache::Config<pallet_cache::Instance2> for Runtime {
+	type Event = Event;
+	type Data = TicketInfo;
+	type Action = TicketType;
 }
 
 impl pallet_faucet::Config for Runtime {
@@ -458,12 +483,7 @@ impl pallet_faucet::Config for Runtime {
 	type Currency = Balances;
 	type MaxGenesisAccount = MaxGenesisAccount;
 	type WeightInfo = pallet_faucet::weights::FaucetWeight<Runtime>;
-}
-
-impl pallet_cache::Config for Runtime {
-	type Event = Event;
-	type Data = TicketInfo;
-	type Action = TicketType;
+	type Cache = PalletCacheFaucet;
 }
 
 parameter_types! {
@@ -533,7 +553,8 @@ construct_runtime!(
 		SponsoredPool: sponsored_pool,
 		TxHandler: gafi_tx,
 		ProofAddressMapping: proof_address_mapping,
-		PalletCache: pallet_cache,
+		PalletCache: pallet_cache::<Instance2>::{Pallet, Call, Storage, Config<T>, Event<T>},
+		PalletCacheFaucet: pallet_cache::<Instance1>::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Faucet: pallet_faucet,
 		GameCreator: game_creator,
 		PoolName: pallet_pool_names,
