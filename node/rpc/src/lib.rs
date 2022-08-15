@@ -23,6 +23,7 @@ use sp_blockchain::{
 };
 use sp_runtime::traits::BlakeTwo256;
 use substrate_frame_rpc_system::{System, SystemApiServer};
+use gafi_local::client::RuntimeApiCollection;
 
 // Frontier
 use fc_rpc::{
@@ -143,7 +144,8 @@ where
 		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
 		+ fp_rpc::ConvertTransactionRuntimeApi<Block>
 		+ fp_rpc::EthereumRuntimeRPCApi<Block>
-		+ BlockBuilder<Block>,
+		+ BlockBuilder<Block>
+		+ RuntimeApiCollection<StateBackend = BE::State>,
 	P: TransactionPool<Block = Block> + Sync + Send + 'static,
 	BE: Backend<Block> + 'static,
 	BE::State: StateBackend<BlakeTwo256>,

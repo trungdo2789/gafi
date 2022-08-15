@@ -17,7 +17,7 @@ hex-literal = "0.3.4"
 jsonrpc-core = "18.0.0"
 jsonrpsee = {version = "0.14.0", features = ["server"]}
 log = "0.4.16"
-serde = {version = "1.0.132", features = ["derive"]}
+serde = { version = "1.0.101", optional = true, default-features = false, features = [ "derive" ] }
 serde_json = "1.0.59"
 
 # Frontier
@@ -93,6 +93,9 @@ cumulus-primitives-parachain-inherent = {git = "https://github.com/grindytech/cu
 cumulus-relay-chain-inprocess-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
 cumulus-relay-chain-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
 cumulus-relay-chain-rpc-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
+nimbus-primitives = { git = "https://github.com/grindytech/nimbus", branch = "gafi-polkadot-v0.9.26", default-features = false }
+
+pallet-parachain-staking = { git = "https://github.com/grindytech/moonbeam", default-features = false, branch = "gafi-polkadot-v0.9.26" }
 
 # Runtime
 gari-runtime = {path = "../../runtime/gari", default-features = false, features = ["std"]}
@@ -103,4 +106,4 @@ gafi-primitives = {path = "../../primitives"}
 
 [features]
 default = ["std"]
-std = []
+std = [ "serde" ]

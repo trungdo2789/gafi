@@ -178,9 +178,9 @@ pub fn run_gari() -> Result<()> {
                     task_manager,
                     import_queue,
                     ..
-                } = gafi_service::new_partial::<RuntimeApi, GafiRuntimeExecutor, _>(
+                } = gafi_service::new_partial_gari::<RuntimeApi, GafiRuntimeExecutor>(
                     &config,
-                    gafi_service::gari_build_import_queue,
+false
                 )?;
                 Ok((cmd.run(client, import_queue), task_manager))
             });
@@ -193,9 +193,9 @@ pub fn run_gari() -> Result<()> {
                     client,
                     task_manager,
                     ..
-                } = gafi_service::new_partial::<RuntimeApi, GafiRuntimeExecutor, _>(
+                } = gafi_service::new_partial_gari::<RuntimeApi, GafiRuntimeExecutor>(
                     &config,
-                    gafi_service::gari_build_import_queue,
+					false
                 )?;
                 Ok((cmd.run(client, config.database), task_manager))
             })
@@ -208,9 +208,9 @@ pub fn run_gari() -> Result<()> {
                     client,
                     task_manager,
                     ..
-                } = gafi_service::new_partial::<RuntimeApi, GafiRuntimeExecutor, _>(
+                } = gafi_service::new_partial_gari::<RuntimeApi, GafiRuntimeExecutor>(
                     &config,
-                    gafi_service::gari_build_import_queue,
+					false
                 )?;
                 Ok((cmd.run(client, config.chain_spec), task_manager))
             });
@@ -224,9 +224,9 @@ pub fn run_gari() -> Result<()> {
                     task_manager,
                     import_queue,
                     ..
-                } = gafi_service::new_partial::<RuntimeApi, GafiRuntimeExecutor, _>(
+                } = gafi_service::new_partial_gari::<RuntimeApi, GafiRuntimeExecutor>(
                     &config,
-                    gafi_service::gari_build_import_queue,
+                    false
                 )?;
                 Ok((cmd.run(client, import_queue), task_manager))
             });
@@ -261,9 +261,9 @@ pub fn run_gari() -> Result<()> {
                     task_manager,
                     backend,
                     ..
-                } = gafi_service::new_partial::<RuntimeApi, GafiRuntimeExecutor, _>(
+                } = gafi_service::new_partial_gari::<RuntimeApi, GafiRuntimeExecutor>(
                     &config,
-                    gafi_service::gari_build_import_queue,
+					false
                 )?;
                 let aux_revert = Box::new(|client, _, blocks| {
                     sc_finality_grandpa::revert(client, blocks)?;
@@ -425,7 +425,10 @@ pub fn run_gari() -> Result<()> {
                     }
                 );
 
-                gafi_service::start_gari_node(config, polkadot_config, collator_options, id)
+                gafi_service::start_node::<
+				gafi_service::gari_runtime::RuntimeApi,
+				gafi_service::GafiRuntimeExecutor,
+			>(config, polkadot_config, collator_options, id)
                     .await
                     .map(|r| r.0)
                     .map_err(Into::into)
@@ -701,7 +704,11 @@ pub fn run_gaki() -> Result<()> {
                     }
                 );
 
-                gafi_service::start_gari_node(config, polkadot_config, collator_options, id)
+                gafi_service::start_node::<
+				// temporary put this to prevent error
+				gafi_service::gari_runtime::RuntimeApi,
+				gafi_service::GafiRuntimeExecutor,
+			>(config, polkadot_config, collator_options, id)
                     .await
                     .map(|r| r.0)
                     .map_err(Into::into)

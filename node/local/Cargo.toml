@@ -84,6 +84,15 @@ frame-benchmarking-cli = {git = "https://github.com/paritytech/substrate", branc
 pallet-player = { version = "4.0.0-dev", default-features = false, path = "../../pallets/player" }
 pallet-player-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, path = "../../pallets/player/runtime-api" }
 
+cumulus-primitives-core = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
+session-keys-primitives = { git = "https://github.com/grindytech/moonbeam", default-features = false, branch = "gafi-polkadot-v0.9.26" }
+nimbus-primitives = { git = "https://github.com/grindytech/nimbus", branch = "gafi-polkadot-v0.9.26", default-features = false }
+
+sp-session = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
+sp-offchain = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
+sp-transaction-pool = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
+pallet-transaction-payment-rpc-runtime-api = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
+
 # Local Dependencies
 devnet = {path = "../../runtime/devnet", default-features = false, features = ["std"]}
 gafi-primitives = {path = "../../primitives", default-features = false}

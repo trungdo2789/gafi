@@ -10,6 +10,7 @@ mod weights;
 pub mod xcm_config;
 
 use codec::{Decode, Encode};
+use cumulus_pallet_parachain_system::RelaychainBlockNumberProvider;
 use smallvec::smallvec;
 use sp_api::impl_runtime_apis;
 use sp_core::{
@@ -19,16 +20,15 @@ use sp_core::{
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{
-		AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable,
+		AccountIdLookup, BlakeTwo256, Block as BlockT, ConvertInto, DispatchInfoOf, Dispatchable,
 		IdentifyAccount, PostDispatchInfoOf, Verify,
 	},
 	transaction_validity::{
 		TransactionPriority, TransactionSource, TransactionValidity, TransactionValidityError,
 	},
-	ApplyExtrinsicResult, MultiSignature,
+	ApplyExtrinsicResult, MultiSignature, Percent,
 };
 
-use sp_io::hashing::blake2_256;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -37,22 +37,23 @@ use sp_version::RuntimeVersion;
 pub use frame_support::traits::EqualPrivilegeOnly;
 use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{Everything, FindAuthor},
+	traits::{ConstU128, ConstU32, EnsureOneOf, Everything, FindAuthor},
 	weights::{
 		constants::WEIGHT_PER_SECOND, ConstantMultiplier, DispatchClass, Weight,
 		WeightToFeeCoefficient, WeightToFeeCoefficients, WeightToFeePolynomial,
 	},
 	ConsensusEngineId, PalletId,
 };
+pub use frame_support::traits::Get;
 use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot,
 };
-pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{H160, H256, U256};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::{marker::PhantomData, prelude::*};
 use xcm_config::{XcmConfig, XcmOriginToTransactDispatchOrigin};
+pub use pallet_author_slot_filter::EligibilityValue;
 // Runtime common
 use runtime_common::impls::DealWithFees;
 
@@ -90,11 +91,22 @@ pub use sp_runtime::BuildStorage;
 // Polkadot imports
 use polkadot_runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
 
+use nimbus_primitives::{CanAuthor, NimbusId};
+pub use pallet_parachain_staking::{InflationInfo, Range};
+
 use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 
 // XCM Imports
 use xcm::latest::prelude::BodyId;
 use xcm_executor::XcmExecutor;
+
+// Shorthand for a Get field of a pallet Config.
+#[macro_export]
+macro_rules! get {
+	($pallet:ident, $name:ident, $type:ty) => {
+		<<$crate::Runtime as $pallet::Config>::$name as $crate::Get<$type>>::get()
+	};
+}
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -207,7 +219,8 @@ pub mod opaque {
 
 impl_opaque_keys! {
 	pub struct SessionKeys {
-		pub aura: Aura,
+		pub nimbus: AuthorInherent,
+		pub vrf: session_keys_primitives::VrfSessionKey,
 	}
 }
 
@@ -363,17 +376,6 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 parameter_types! {
-	pub const UncleGenerations: u32 = 0;
-}
-
-impl pallet_authorship::Config for Runtime {
-	type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Aura>;
-	type UncleGenerations = UncleGenerations;
-	type FilterUncle = ();
-	type EventHandler = (CollatorSelection,);
-}
-
-parameter_types! {
 	pub const ExistentialDeposit: Balance = EXISTENTIAL_DEPOSIT;
 	pub const MaxLocks: u32 = 50;
 	pub const MaxReserves: u32 = 50;
@@ -460,6 +462,92 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
 
 impl parachain_info::Config for Runtime {}
 
+parameter_types! {
+	/// Default fixed percent a collator takes off the top of due rewards
+	pub const DefaultCollatorCommission: Perbill = Perbill::from_percent(20);
+	/// Default percent of inflation set aside for parachain bond every round
+	pub const DefaultParachainBondReservePercent: Percent = Percent::from_percent(30);
+	pub MinCollatorStk: u128 = 1000 * unit(GAFI);
+	pub MinCandidateStk: u128 = 1000 * unit(GAFI);
+	/// Minimum stake required to be reserved to be a delegator
+	pub MinDelegation: u128 = 500 * unit(GAFI);
+	/// Minimum stake required to be reserved to be a delegator
+	pub MinDelegatorStk:u128 = 500 * unit(GAFI);
+}
+
+impl pallet_parachain_staking::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type MonetaryGovernanceOrigin = EnsureRoot<AccountId>;
+	/// Minimum round length is 2 minutes (10 * 12 second block times)
+	type MinBlocksPerRound = ConstU32<10>;
+	/// Blocks per round
+	type DefaultBlocksPerRound = ConstU32<{ 6 * HOURS }>;
+	/// Rounds before the collator leaving the candidates request can be executed
+	type LeaveCandidatesDelay = ConstU32<{ 4 * 7 }>;
+	/// Rounds before the candidate bond increase/decrease can be executed
+	type CandidateBondLessDelay = ConstU32<{ 4 * 7 }>;
+	/// Rounds before the delegator exit can be executed
+	type LeaveDelegatorsDelay = ConstU32<{ 4 * 7 }>;
+	/// Rounds before the delegator revocation can be executed
+	type RevokeDelegationDelay = ConstU32<{ 4 * 7 }>;
+	/// Rounds before the delegator bond increase/decrease can be executed
+	type DelegationBondLessDelay = ConstU32<{ 4 * 7 }>;
+	/// Rounds before the reward is paid
+	type RewardPaymentDelay = ConstU32<2>;
+	/// Minimum collators selected per round, default at genesis and minimum forever after
+	type MinSelectedCandidates = ConstU32<8>;
+	/// Maximum top delegations per candidate
+	type MaxTopDelegationsPerCandidate = ConstU32<300>;
+	/// Maximum bottom delegations per candidate
+	type MaxBottomDelegationsPerCandidate = ConstU32<50>;
+	/// Maximum delegations per delegator
+	type MaxDelegationsPerDelegator = ConstU32<100>;
+	type DefaultCollatorCommission = DefaultCollatorCommission;
+	type DefaultParachainBondReservePercent = DefaultParachainBondReservePercent;
+	/// Minimum stake required to become a collator
+	type MinCollatorStk = MinCollatorStk;
+	/// Minimum stake required to be reserved to be a candidate
+	type MinCandidateStk = MinCandidateStk;
+	/// Minimum stake required to be reserved to be a delegator
+	type MinDelegation = MinDelegation;
+	/// Minimum stake required to be reserved to be a delegator
+	type MinDelegatorStk = MinDelegatorStk;
+	type BlockAuthor = AuthorInherent;
+	type OnCollatorPayout = ();
+	type OnNewRound = ();
+	type WeightInfo = pallet_parachain_staking::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_author_inherent::Config for Runtime {
+	type SlotBeacon = RelaychainBlockNumberProvider<Self>;
+	type AccountLookup = ();
+	type CanAuthor = AuthorFilter;
+	type WeightInfo = pallet_author_inherent::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_author_slot_filter::Config for Runtime {
+	type Event = Event;
+	type RandomnessSource = RandomnessCollectiveFlip;
+	type PotentialAuthors = ParachainStaking;
+	type WeightInfo = pallet_author_slot_filter::weights::SubstrateWeight<Runtime>;
+}
+
+parameter_types! {
+	pub DepositAmount: u128 = 100 * unit(GAFI);
+}
+
+// This is a simple session key manager. It should probably either work with, or be replaced
+// entirely by pallet sessions
+impl pallet_author_mapping::Config for Runtime {
+	type Event = Event;
+	type DepositCurrency = Balances;
+	type DepositAmount = DepositAmount;
+	type Keys = session_keys_primitives::VrfId;
+	type WeightInfo = pallet_author_mapping::weights::SubstrateWeight<Runtime>;
+}
+
+
 impl pallet_randomness_collective_flip::Config for Runtime {}
 
 impl pallet_player::Config for Runtime {
@@ -470,8 +558,6 @@ impl pallet_player::Config for Runtime {
 	type UpfrontPool = UpfrontPool;
 	type StakingPool = StakingPool;
 }
-
-impl cumulus_pallet_aura_ext::Config for Runtime {}
 
 impl cumulus_pallet_xcmp_queue::Config for Runtime {
 	type Event = Event;
@@ -496,65 +582,22 @@ parameter_types! {
 	pub const MaxAuthorities: u32 = 100_000;
 }
 
-impl pallet_session::Config for Runtime {
-	type Event = Event;
-	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	// we don't have stash and controller, thus we don't need the convert as well.
-	type ValidatorIdOf = pallet_collator_selection::IdentityCollator;
-	type ShouldEndSession = pallet_session::PeriodicSessions<Period, Offset>;
-	type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
-	type SessionManager = CollatorSelection;
-	// Essentially just Aura, but lets be pedantic.
-	type SessionHandler = <SessionKeys as sp_runtime::traits::OpaqueKeys>::KeyTypeIdProviders;
-	type Keys = SessionKeys;
-	type WeightInfo = ();
-}
+/// The author inherent provides a AccountId20, but pallet evm needs an H160.
+/// This simple adapter makes the conversion.
+pub struct FindAuthorAdapter<Inner>(sp_std::marker::PhantomData<Inner>);
 
-impl pallet_aura::Config for Runtime {
-	type AuthorityId = AuraId;
-	type DisabledValidators = ();
-	type MaxAuthorities = MaxAuthorities;
-}
-
-parameter_types! {
-	pub const PotId: PalletId = PalletId(*b"PotStake");
-	pub const MaxCandidates: u32 = 1000;
-	pub const MinCandidates: u32 = 5;
-	pub const SessionLength: BlockNumber = 6 * HOURS;
-	pub const MaxInvulnerables: u32 = 100;
-	pub const ExecutiveBody: BodyId = BodyId::Executive;
-}
-
-// We allow root only to execute privileged collator selection operations.
-pub type CollatorSelectionUpdateOrigin = EnsureRoot<AccountId>;
-
-impl pallet_collator_selection::Config for Runtime {
-	type Event = Event;
-	type Currency = Balances;
-	type UpdateOrigin = CollatorSelectionUpdateOrigin;
-	type PotId = PotId;
-	type MaxCandidates = MaxCandidates;
-	type MinCandidates = MinCandidates;
-	type MaxInvulnerables = MaxInvulnerables;
-	// should be a multiple of session or things will get inconsistent
-	type KickThreshold = Period;
-	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = pallet_collator_selection::IdentityCollator;
-	type ValidatorRegistration = Session;
-	type WeightInfo = ();
-}
-
-pub struct FindAuthorTruncated<F>(PhantomData<F>);
-impl<F: FindAuthor<u32>> FindAuthor<H160> for FindAuthorTruncated<F> {
+impl<Inner> FindAuthor<H160> for FindAuthorAdapter<Inner>
+where
+	Inner: FindAuthor<AccountId>,
+{
 	fn find_author<'a, I>(digests: I) -> Option<H160>
 	where
-		I: 'a + IntoIterator<Item = (ConsensusEngineId, &'a [u8])>,
+		I: 'a + IntoIterator<Item = (sp_runtime::ConsensusEngineId, &'a [u8])>,
 	{
-		if let Some(author_index) = F::find_author(digests) {
-			let authority_id = Aura::authorities()[author_index as usize].clone();
-			return Some(H160::from_slice(&authority_id.to_raw_vec()[4..24]))
-		}
-		None
+		Inner::find_author(digests).map(|account_id| {
+			let data: [u8; 32] = account_id.into();
+			H160::from_slice(&data[4..24])
+		})
 	}
 }
 
@@ -575,6 +618,36 @@ impl pallet_scheduler::Config for Runtime {
 	type OriginPrivilegeCmp = EqualPrivilegeOnly;
 	type PreimageProvider = ();
 	type NoPreimagePostponement = ();
+}
+
+parameter_types! {
+	pub const ProposalBond: Permill = Permill::from_percent(5);
+	pub ProposalBondMinimum: Balance = 100 * unit(GAFI);
+	pub ProposalBondMaximum: Balance = 500 * unit(GAFI);
+	pub SpendPeriod: BlockNumber = 7 * DAYS;
+	pub const Burn: Permill = Permill::from_percent(1);
+	pub const TreasuryPalletId: PalletId = PalletId(*b"py/trsry");
+
+	pub const MaxApprovals: u32 = 100;
+}
+
+impl pallet_treasury::Config for Runtime {
+	type PalletId = TreasuryPalletId;
+	type Currency = Balances;
+	type ApproveOrigin = EnsureRoot<AccountId>;
+	type RejectOrigin = EnsureRoot<AccountId>;
+	type Event = Event;
+	type OnSlash = Treasury;
+	type ProposalBond = ProposalBond;
+	type ProposalBondMinimum = ProposalBondMinimum;
+	type ProposalBondMaximum = ProposalBondMaximum;
+	type SpendPeriod = SpendPeriod;
+	type Burn = Burn;
+	type BurnDestination = ();
+	type SpendFunds = ();
+	type MaxApprovals = MaxApprovals;
+	type WeightInfo = pallet_treasury::weights::SubstrateWeight<Runtime>;
+	type SpendOrigin = frame_support::traits::NeverEnsureOrigin<Balance>;
 }
 
 // Frontier
@@ -599,7 +672,7 @@ impl pallet_evm::Config for Runtime {
 	type ChainId = ChainId;
 	type BlockGasLimit = BlockGasLimit;
 	type OnChargeTransaction = GafiEVMCurrencyAdapter<Balances, ()>;
-	type FindAuthor = FindAuthorTruncated<Aura>;
+	type FindAuthor = FindAuthorAdapter<AuthorInherent>;
 }
 
 impl pallet_ethereum::Config for Runtime {
@@ -826,11 +899,10 @@ construct_runtime!(
 		TransactionPayment: pallet_transaction_payment::{Pallet, Storage, Event<T>} = 11,
 
 		// Collator support. The order of these 4 are important and shall not change.
-		Authorship: pallet_authorship::{Pallet, Call, Storage} = 20,
-		CollatorSelection: pallet_collator_selection::{Pallet, Call, Storage, Event<T>, Config<T>} = 21,
-		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>} = 22,
-		Aura: pallet_aura::{Pallet, Storage, Config<T>} = 23,
-		AuraExt: cumulus_pallet_aura_ext::{Pallet, Storage, Config} = 24,
+		AuthorInherent: pallet_author_inherent::{Pallet, Call, Storage, Inherent} = 21,
+		AuthorFilter: pallet_author_slot_filter::{Pallet, Call, Storage, Event, Config} = 22,
+		AuthorMapping: pallet_author_mapping::{Pallet, Call, Config<T>, Storage, Event<T>} = 23,
+		ParachainStaking: pallet_parachain_staking::{Pallet, Call, Storage, Event<T>, Config<T>} = 25,
 
 		// XCM helpers.
 		XcmpQueue: cumulus_pallet_xcmp_queue::{Pallet, Call, Storage, Event<T>} = 30,
@@ -843,6 +915,8 @@ construct_runtime!(
 		EVM: pallet_evm::{Pallet, Config, Call, Storage, Event<T>} = 41,
 		DynamicFee: pallet_dynamic_fee::{Pallet, Call, Storage, Config, Inherent} = 42,
 		BaseFee: pallet_base_fee::{Pallet, Call, Storage, Config<T>, Event} = 43,
+
+		Treasury: pallet_treasury::{Pallet, Call, Storage, Config, Event<T>} = 50,
 
 		// Local
 		StakingPool: staking_pool::{Pallet, Call, Storage, Event<T>} = 62,
@@ -890,7 +964,6 @@ mod benches {
 	define_benchmarks!(
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
-		[pallet_session, SessionBench::<Runtime>]
 		[pallet_timestamp, Timestamp]
 		[pallet_collator_selection, CollatorSelection]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
@@ -952,16 +1025,6 @@ impl fp_self_contained::SelfContainedCall for Call {
 }
 
 impl_runtime_apis! {
-	impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
-		fn slot_duration() -> sp_consensus_aura::SlotDuration {
-			sp_consensus_aura::SlotDuration::from_millis(Aura::slot_duration())
-		}
-
-		fn authorities() -> Vec<AuraId> {
-			Aura::authorities().into_inner()
-		}
-	}
-
 	impl sp_api::Core<Block> for Runtime {
 		fn version() -> RuntimeVersion {
 			VERSION
@@ -1052,9 +1115,79 @@ impl_runtime_apis! {
 		}
 	}
 
+	impl nimbus_primitives::NimbusApi<Block> for Runtime {
+		fn can_author(
+			author: nimbus_primitives::NimbusId,
+			slot: u32,
+			parent_header: &<Block as BlockT>::Header
+		) -> bool {
+			let block_number = parent_header.number + 1;
+
+			// The Moonbeam runtimes use an entropy source that needs to do some accounting
+			// work during block initialization. Therefore we initialize it here to match
+			// the state it will be in when the next block is being executed.
+			use frame_support::traits::OnInitialize;
+			System::initialize(
+				&block_number,
+				&parent_header.hash(),
+				&parent_header.digest,
+			);
+			RandomnessCollectiveFlip::on_initialize(block_number);
+
+			// Because the staking solution calculates the next staking set at the beginning
+			// of the first block in the new round, the only way to accurately predict the
+			// authors is to compute the selection during prediction.
+			if pallet_parachain_staking::Pallet::<Self>::round().should_update(block_number) {
+				// get author account id
+				use nimbus_primitives::AccountLookup;
+				let author_account_id = if let Some(account) =
+					pallet_author_mapping::Pallet::<Self>::lookup_account(&author) {
+					account
+				} else {
+					// return false if author mapping not registered like in can_author impl
+					return false
+				};
+				// predict eligibility post-selection by computing selection results now
+				let (eligible, _) =
+					pallet_author_slot_filter::compute_pseudo_random_subset::<Self>(
+						pallet_parachain_staking::Pallet::<Self>::compute_top_candidates(),
+						&slot
+					);
+				eligible.contains(&author_account_id)
+			} else {
+				AuthorInherent::can_author(&author, &slot)
+			}
+		}
+	}
+
+	// We also implement the old AuthorFilterAPI to meet the trait bounds on the client side.
+	impl nimbus_primitives::AuthorFilterAPI<Block, NimbusId> for Runtime {
+		fn can_author(_: NimbusId, _: u32, _: &<Block as BlockT>::Header) -> bool {
+			panic!("AuthorFilterAPI is no longer supported. Please update your client.")
+		}
+	}
+
+
 	impl cumulus_primitives_core::CollectCollationInfo<Block> for Runtime {
 		fn collect_collation_info(header: &<Block as BlockT>::Header) -> cumulus_primitives_core::CollationInfo {
 			ParachainSystem::collect_collation_info(header)
+		}
+	}
+
+	impl session_keys_primitives::VrfApi<Block> for Runtime {
+		fn get_last_vrf_output() -> Option<<Block as BlockT>::Hash> {
+			// // TODO: remove in future runtime upgrade along with storage item
+			// if pallet_randomness::Pallet::<Self>::not_first_block().is_none() {
+			// 	return None;
+			// }
+			// pallet_randomness::Pallet::<Self>::local_vrf_output()
+			return None;
+		}
+		fn vrf_key_lookup(
+			nimbus_id: nimbus_primitives::NimbusId
+		) -> Option<session_keys_primitives::VrfId> {
+			use session_keys_primitives::KeysLookup;
+			AuthorMapping::lookup_keys(&nimbus_id)
 		}
 	}
 
@@ -1324,8 +1457,9 @@ impl cumulus_pallet_parachain_system::CheckInherents<Block> for CheckInherents {
 	}
 }
 
-cumulus_pallet_parachain_system::register_validate_block! {
+// Nimbus's Executive wrapper allows relay validators to verify the seal digest
+cumulus_pallet_parachain_system::register_validate_block!(
 	Runtime = Runtime,
-	BlockExecutor = cumulus_pallet_aura_ext::BlockExecutor::<Runtime, Executive>,
+	BlockExecutor = pallet_author_inherent::BlockExecutor::<Runtime, Executive>,
 	CheckInherents = CheckInherents,
-}
+);

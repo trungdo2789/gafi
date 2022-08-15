@@ -21,7 +21,6 @@ pub mod impls;
 use frame_support::traits::Currency;
 
 /// Implementations of some helper traits passed into runtime modules as associated types.
-pub use impls::ToAuthor;
 use sp_runtime::{
 	traits::{IdentifyAccount, Verify},
 	MultiSignature,

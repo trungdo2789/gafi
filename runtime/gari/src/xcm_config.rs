@@ -10,7 +10,7 @@ use frame_support::{
 };
 use pallet_xcm::XcmPassthrough;
 use polkadot_parachain::primitives::Sibling;
-use polkadot_runtime_common::impls::ToAuthor;
+use runtime_common::impls::DealWithFees;
 use xcm::latest::prelude::*;
 use xcm_builder::{
 	AccountId32Aliases, AllowTopLevelPaidExecutionFrom, AllowUnpaidExecutionFrom, CurrencyAdapter,
@@ -125,21 +125,37 @@ impl ShouldExecute for DenyReserveTransferToRelayChain {
 			matches!(
 				inst,
 				InitiateReserveWithdraw {
-					reserve: MultiLocation { parents: 1, interior: Here },
+					reserve: MultiLocation {
+						parents: 1,
+						interior: Here
+					},
 					..
-				} | DepositReserveAsset { dest: MultiLocation { parents: 1, interior: Here }, .. } |
-					TransferReserveAsset {
-						dest: MultiLocation { parents: 1, interior: Here },
-						..
-					}
+				} | DepositReserveAsset {
+					dest: MultiLocation {
+						parents: 1,
+						interior: Here
+					},
+					..
+				} | TransferReserveAsset {
+					dest: MultiLocation {
+						parents: 1,
+						interior: Here
+					},
+					..
+				}
 			)
 		}) {
 			return Err(()) // Deny
 		}
 
 		// allow reserve transfers to arrive from relay chain
-		if matches!(origin, MultiLocation { parents: 1, interior: Here }) &&
-			message.0.iter().any(|inst| matches!(inst, ReserveAssetDeposited { .. }))
+		if matches!(
+			origin,
+			MultiLocation {
+				parents: 1,
+				interior: Here
+			}
+		) && message.0.iter().any(|inst| matches!(inst, ReserveAssetDeposited { .. }))
 		{
 			log::warn!(
 				target: "xcm::barriers",
@@ -174,7 +190,7 @@ impl xcm_executor::Config for XcmConfig {
 	type Barrier = Barrier;
 	type Weigher = FixedWeightBounds<UnitWeightCost, Call, MaxInstructions>;
 	type Trader =
-		UsingComponents<WeightToFee, RelayLocation, AccountId, Balances, ToAuthor<Runtime>>;
+		UsingComponents<WeightToFee, RelayLocation, AccountId, Balances, DealWithFees<Runtime>>;
 	type ResponseHandler = PolkadotXcm;
 	type AssetTrap = PolkadotXcm;
 	type AssetClaims = PolkadotXcm;

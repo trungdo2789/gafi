@@ -17,7 +17,7 @@ hex-literal = "0.3.4"
 jsonrpc-core = "18.0.0"
 jsonrpsee = {version = "0.14.0", features = ["server"]}
 log = "0.4.16"
-serde = {version = "1.0.132", features = ["derive"]}
+serde = { version = "1.0.101", optional = true, default-features = false, features = [ "derive" ] }
 
 # Frontier
 fc-consensus = {git = "https://github.com/grindytech/frontier", branch = "gafi-polkadot-v0.9.26"}
@@ -36,6 +36,7 @@ pallet-evm = {git = "https://github.com/grindytech/frontier", branch = "gafi-pol
 frame-benchmarking = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
 frame-benchmarking-cli = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26", optional = true}
 pallet-transaction-payment-rpc = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
+pallet-transaction-payment-rpc-runtime-api = {version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
 sc-basic-authorship = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
 sc-chain-spec = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
 sc-cli = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26", features = ["wasmtime"]}
@@ -88,6 +89,11 @@ cumulus-primitives-parachain-inherent = {git = "https://github.com/grindytech/cu
 cumulus-relay-chain-inprocess-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
 cumulus-relay-chain-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
 cumulus-relay-chain-rpc-interface = {git = "https://github.com/grindytech/cumulus", branch = "gafi-polkadot-v0.9.26"}
+nimbus-primitives = { git = "https://github.com/grindytech/nimbus", branch = "gafi-polkadot-v0.9.26", default-features = false }
+nimbus-consensus = { git = "https://github.com/grindytech/nimbus", branch = "gafi-polkadot-v0.9.26", default-features = false }
+
+session-keys-primitives = { git = "https://github.com/grindytech/moonbeam", default-features = false, branch = "gafi-polkadot-v0.9.26" }
+moonbeam-vrf = { git = "https://github.com/grindytech/moonbeam", default-features = false, branch = "gafi-polkadot-v0.9.26" }
 
 # Runtime
 gaki-runtime = {path = "../../runtime/gaki", optional = true}
@@ -96,6 +102,7 @@ gari-runtime = {path = "../../runtime/gari", optional = true}
 # Local
 gafi-primitives = {path = "../../primitives", default-features = false}
 gafi-rpc = {path = "../rpc", default-features = false}
+gafi-local = {path = "../local", default-features = false}
 
 [build-dependencies]
 substrate-build-script-utils = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}

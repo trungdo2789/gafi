@@ -16,24 +16,8 @@
 
 //! Auxiliary `struct`/`enum`s for polkadot runtime.
 
-use crate::{NegativeImbalance, AccountId};
-use frame_support::traits::{Currency, Imbalance, OnUnbalanced};
-
-/// Logic for the author to get a portion of fees.
-pub struct ToAuthor<R>(sp_std::marker::PhantomData<R>);
-impl<R> OnUnbalanced<NegativeImbalance<R>> for ToAuthor<R>
-where
-	R: pallet_balances::Config + pallet_authorship::Config,
-	<R as frame_system::Config>::AccountId: From<AccountId>,
-	<R as frame_system::Config>::AccountId: Into<AccountId>,
-	<R as frame_system::Config>::Event: From<pallet_balances::Event<R>>,
-{
-	fn on_nonzero_unbalanced(amount: NegativeImbalance<R>) {
-		if let Some(author) = <pallet_authorship::Pallet<R>>::author() {
-			<pallet_balances::Pallet<R>>::resolve_creating(&author, amount);
-		}
-	}
-}
+use crate::{AccountId, NegativeImbalance};
+use frame_support::traits::{Imbalance, OnUnbalanced};
 
 pub struct DealWithFees<R>(sp_std::marker::PhantomData<R>);
 impl<R> OnUnbalanced<NegativeImbalance<R>> for DealWithFees<R>
@@ -71,7 +55,7 @@ where
 mod tests {
 	use crate::AccountId;
 
-use super::*;
+	use super::*;
 	use frame_support::{parameter_types, traits::FindAuthor, weights::DispatchClass, PalletId};
 	use frame_system::limits;
 	use sp_core::H256;
@@ -92,7 +76,6 @@ use super::*;
 			UncheckedExtrinsic = UncheckedExtrinsic,
 		{
 			System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-			Authorship: pallet_authorship::{Pallet, Call, Storage, Inherent},
 			Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 			Treasury: pallet_treasury::{Pallet, Call, Storage, Config, Event<T>},
 		}
@@ -184,12 +167,6 @@ use super::*;
 		{
 			Some(TEST_ACCOUNT)
 		}
-	}
-	impl pallet_authorship::Config for Test {
-		type FindAuthor = OneAuthor;
-		type UncleGenerations = ();
-		type FilterUncle = ();
-		type EventHandler = ();
 	}
 
 	pub fn new_test_ext() -> sp_io::TestExternalities {

@@ -1,20 +1,20 @@
 use cumulus_primitives_core::ParaId;
 use gafi_primitives::currency::{unit, GafiCurrency, NativeToken::GAFI, TokenInfo};
 use gari_runtime::{
-	AccountId, EVMConfig, EthereumConfig, Signature,
-	EXISTENTIAL_DEPOSIT, TxHandlerConfig
+	AccountId, AuthorFilterConfig, EVMConfig, EligibilityValue, EthereumConfig,
+	ParachainStakingConfig, AuthorMappingConfig, Signature, TxHandlerConfig, EXISTENTIAL_DEPOSIT,
+	Balance, Range, InflationInfo
 };
 use hex_literal::hex;
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_core::crypto::UncheckedInto;
-use sp_core::{sr25519, Pair, Public};
+use sp_core::{crypto::UncheckedInto, sr25519, Pair, Public, U256};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use std::collections::BTreeMap;
-use sp_core::U256;
+use nimbus_primitives::NimbusId;
+use sp_runtime::Perbill;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ChainSpec = sc_service::GenericChainSpec<gari_runtime::GenesisConfig, Extensions>;
@@ -31,7 +31,7 @@ pub fn get_public_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pa
 
 /// The extensions for the [`ChainSpec`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ChainSpecGroup, ChainSpecExtension)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct Extensions {
 	/// The relay chain of the Parachain.
 	pub relay_chain: String,
@@ -48,11 +48,41 @@ impl Extensions {
 
 type AccountPublic = <Signature as Verify>::Signer;
 
+pub fn moonbeam_inflation_config() -> InflationInfo<Balance> {
+	fn to_round_inflation(annual: Range<Perbill>) -> Range<Perbill> {
+		use pallet_parachain_staking::inflation::{
+			perbill_annual_to_perbill_round, BLOCKS_PER_YEAR,
+		};
+		perbill_annual_to_perbill_round(
+			annual,
+			// rounds per year
+			BLOCKS_PER_YEAR /
+				gari_runtime::get!(pallet_parachain_staking, DefaultBlocksPerRound, u32),
+		)
+	}
+	let annual = Range {
+		min: Perbill::from_percent(4),
+		ideal: Perbill::from_percent(5),
+		max: Perbill::from_percent(5),
+	};
+	InflationInfo {
+		// staking expectations
+		expect: Range {
+			min: 100_000_000_000_000_000_000_000_u128,
+			ideal: 200_000_000_000_000_000_000_000_u128,
+			max: 500_000_000_000_000_000_000_000_u128,
+		},
+		// annual inflation
+		annual,
+		round: to_round_inflation(annual),
+	}
+}
+
 /// Generate collator keys from seed.
 ///
 /// This function's return type must always match the session keys of the chain in tuple format.
-pub fn get_collator_keys_from_seed(seed: &str) -> AuraId {
-	get_public_from_seed::<AuraId>(seed)
+pub fn get_collator_keys_from_seed(seed: &str) -> NimbusId {
+	get_public_from_seed::<NimbusId>(seed)
 }
 
 /// Helper function to generate an account ID from seed
@@ -61,13 +91,6 @@ where
 	AccountPublic: From<<TPublic::Pair as Pair>::Public>,
 {
 	AccountPublic::from(get_public_from_seed::<TPublic>(seed)).into_account()
-}
-
-/// Generate the session keys from individual elements.
-///
-/// The input must be a tuple of individual keys (a single arg for now since we have just one key).
-pub fn template_session_keys(keys: AuraId) -> gari_runtime::SessionKeys {
-	gari_runtime::SessionKeys { aura: keys }
 }
 
 pub fn rococo_config() -> ChainSpec {
@@ -91,35 +114,37 @@ pub fn rococo_config() -> ChainSpec {
 		ChainType::Live,
 		move || {
 			testnet_genesis(
-				// initial collators.
-				vec![
-					(
-						//5FbfK2cdph7eM6YNmwyoNxq1hWhsCf8Gq4yet1yduexLCyTe
-						hex!("6e312c24b61893b64fbb04fd37b2cc6c1df62a4419f1327fbabad172182a395c")
-							.into(),
-						hex!("9c50bd296e31f84d7ff151faf176e8d4ff6894c8f55ad95fcbe69123aa9ded2d")
-							.unchecked_into(),
-					),
-					(
-						//5GRQ2cn1yjWg4KeC386X6kNHwLkQnxf1acushGeurqKnpUWb
-						hex!("0253d36985ec33de94eadc8657dc5ab9dbfa84e27d944660c8c758a1530d2462")
-							.into(),
-						hex!("c0b91242dac16a951f8ca60e9d0c3937f6a01012a4d299b05b07e047009cbc57")
-							.unchecked_into(),
-					),
-				],
 				vec![
 					//5FYu1DAUqRax7Pe8tQxQQccs1SyZNLn8oPaLgJo9RtaBge5o
 					(
-						hex!("9a3518c4346239d5384abd80659d358f23271e1049398dca23734203ab44b811").into(),
-						500_000_000_000_000_000_000_000_000_u128
+						hex!("9a3518c4346239d5384abd80659d358f23271e1049398dca23734203ab44b811")
+							.into(),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					//5Gp4fsJUTCtKXfXwjsJvNevtJeZrKFGm3kvbrtWePqpCqtCZ
 					(
-						hex!("d2028d37ded894f5544d2c93efa810772e59f5340e169c54230d88ef1ef2ff1f").into(),
-						500_000_000_000_000_000_000_000_000_u128
-					)
+						hex!("d2028d37ded894f5544d2c93efa810772e59f5340e169c54230d88ef1ef2ff1f")
+							.into(),
+						500_000_000_000_000_000_000_000_000_u128,
+					),
 				],
+				// Collator Candidate
+				vec![
+				// Alice -> Alith
+				(
+					get_account_id_from_seed::<sr25519::Public>("Alice"),
+					get_collator_keys_from_seed("Alice"),
+					1_000_000_000_000_000_000_000_u128,
+				),
+				// Bob -> Baltathar
+				(
+					get_account_id_from_seed::<sr25519::Public>("Bob"),
+					get_collator_keys_from_seed("Bob"),
+					1_000_000_000_000_000_000_000_u128,
+				)
+				],
+				// Delegations
+				vec![],
 				id,
 			)
 		},
@@ -150,73 +175,72 @@ pub fn development_config() -> ChainSpec {
 		ChainType::Development,
 		move || {
 			testnet_genesis(
-				// initial collators.
 				vec![
 					(
 						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						get_collator_keys_from_seed("Alice"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
 						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						get_collator_keys_from_seed("Bob"),
-					),
-				],
-				vec![
-					(
-						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						500_000_000_000_000_000_000_000_000_u128
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Charlie"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Charlie"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Dave"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Dave"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Eve"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Eve"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Ferdie"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Ferdie"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
-					),
-					(
-					get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
 						get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
-						500_000_000_000_000_000_000_000_000_u128
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 				],
+				vec![
+				// Alice -> Alith
+				(
+					get_account_id_from_seed::<sr25519::Public>("Alice"),
+					get_collator_keys_from_seed("Alice"),
+					1_000_000_000_000_000_000_000_u128,
+				),
+				// Bob -> Baltathar
+				(
+					get_account_id_from_seed::<sr25519::Public>("Bob"),
+					get_collator_keys_from_seed("Bob"),
+					1_000_000_000_000_000_000_000_u128,
+				)
+				],
+				// Delegations
+				vec![],
 				1000.into(),
 			)
 		},
@@ -247,73 +271,72 @@ pub fn local_testnet_config() -> ChainSpec {
 		ChainType::Local,
 		move || {
 			testnet_genesis(
-				// initial collators.
 				vec![
 					(
 						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						get_collator_keys_from_seed("Alice"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
 						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						get_collator_keys_from_seed("Bob"),
-					),
-				],
-				vec![
-					(
-						get_account_id_from_seed::<sr25519::Public>("Alice"),
-						500_000_000_000_000_000_000_000_000_u128
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-						get_account_id_from_seed::<sr25519::Public>("Bob"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Charlie"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Charlie"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Dave"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Dave"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Eve"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Eve"),
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Ferdie"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Ferdie"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
-					get_account_id_from_seed::<sr25519::Public>("Dave//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
-					),
-					(
-					get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
-						
-						500_000_000_000_000_000_000_000_000_u128
+						get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 					(
 						get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
-						500_000_000_000_000_000_000_000_000_u128
+						500_000_000_000_000_000_000_000_000_u128,
 					),
 				],
+				vec![
+				// Alice -> Alith
+				(
+					get_account_id_from_seed::<sr25519::Public>("Alice"),
+					get_collator_keys_from_seed("Alice"),
+					1_000_000_000_000_000_000_000_u128,
+				),
+				// Bob -> Baltathar
+				(
+					get_account_id_from_seed::<sr25519::Public>("Bob"),
+					get_collator_keys_from_seed("Bob"),
+					1_000_000_000_000_000_000_000_u128,
+				)
+				],
+				// Delegations
+				vec![],
 				2000.into(),
 			)
 		},
@@ -336,11 +359,11 @@ pub fn local_testnet_config() -> ChainSpec {
 }
 
 fn testnet_genesis(
-	invulnerables: Vec<(AccountId, AuraId)>,
 	endowed_accounts: Vec<(AccountId, u128)>,
+	candidates: Vec<(AccountId, NimbusId, Balance)>,
+	delegations: Vec<(AccountId, AccountId, Balance)>,
 	id: ParaId,
 ) -> gari_runtime::GenesisConfig {
-
 	let min_gas_price: U256 = U256::from(4_000_000_000_000u128);
 
 	gari_runtime::GenesisConfig {
@@ -350,35 +373,29 @@ fn testnet_genesis(
 				.to_vec(),
 		},
 		balances: gari_runtime::BalancesConfig {
-			balances: endowed_accounts
-				.iter()
-				.cloned()
-				.map(|k| (k.0, k.1))
-				.collect(),
+			balances: endowed_accounts.iter().cloned().map(|k| (k.0, k.1)).collect(),
 		},
 		parachain_info: gari_runtime::ParachainInfoConfig { parachain_id: id },
-		collator_selection: gari_runtime::CollatorSelectionConfig {
-			invulnerables: invulnerables.iter().cloned().map(|(acc, _)| acc).collect(),
-			candidacy_bond: EXISTENTIAL_DEPOSIT * 16,
-			..Default::default()
+		parachain_system: Default::default(),
+		author_filter: AuthorFilterConfig {
+			eligible_count: EligibilityValue::new_unchecked(50),
 		},
-		session: gari_runtime::SessionConfig {
-			keys: invulnerables
-				.into_iter()
-				.map(|(acc, aura)| {
-					(
-						acc.clone(),                 // account id
-						acc,                         // validator id
-						template_session_keys(aura), // session keys
-					)
-				})
+		parachain_staking: ParachainStakingConfig {
+			candidates: candidates
+				.iter()
+				.cloned()
+				.map(|(account, _, bond)| (account, bond))
+				.collect(),
+			delegations,
+			inflation_config: moonbeam_inflation_config(),
+		},
+		author_mapping: AuthorMappingConfig {
+			mappings: candidates
+				.iter()
+				.cloned()
+				.map(|(account_id, author_id, _)| (author_id, account_id))
 				.collect(),
 		},
-		// no need to pass anything to aura, in fact it will panic if we do. Session will take care
-		// of this.
-		aura: Default::default(),
-		aura_ext: Default::default(),
-		parachain_system: Default::default(),
 		polkadot_xcm: gari_runtime::PolkadotXcmConfig {
 			safe_xcm_version: Some(SAFE_XCM_VERSION),
 		},
@@ -395,6 +412,7 @@ fn testnet_genesis(
 			gas_price: U256::from(min_gas_price),
 		},
 		pool: Default::default(),
-		upfront_pool: Default::default()
+		upfront_pool: Default::default(),
+		treasury: Default::default(),
 	}
 }
