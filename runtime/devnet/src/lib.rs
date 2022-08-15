@@ -21,7 +21,6 @@ use sp_core::{
 	crypto::{ByteArray, KeyTypeId},
 	OpaqueMetadata, H160, H256, U256,
 };
-use sp_io::hashing::blake2_256;
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{

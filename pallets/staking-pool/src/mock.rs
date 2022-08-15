@@ -4,7 +4,6 @@
 */
 
 use crate::{self as staking_pool};
-use codec::Encode;
 use frame_support::{parameter_types, traits::GenesisBuild};
 use frame_system as system;
 
@@ -24,7 +23,6 @@ use sp_runtime::{
 	AccountId32,
 	Permill
 };
-use sp_io::hashing::blake2_256;
 pub use pallet_balances::Call as BalancesCall;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
