@@ -17,7 +17,23 @@
 //! Auxiliary `struct`/`enum`s for polkadot runtime.
 
 use crate::{AccountId, NegativeImbalance};
-use frame_support::traits::{Imbalance, OnUnbalanced};
+use frame_support::traits::{Currency, Imbalance, OnUnbalanced};
+
+/// Logic for the author to get a portion of fees.
+pub struct ToAuthor<R>(sp_std::marker::PhantomData<R>);
+impl<R> OnUnbalanced<NegativeImbalance<R>> for ToAuthor<R>
+where
+	R: pallet_balances::Config + pallet_authorship::Config,
+	<R as frame_system::Config>::AccountId: From<AccountId>,
+	<R as frame_system::Config>::AccountId: Into<AccountId>,
+	<R as frame_system::Config>::Event: From<pallet_balances::Event<R>>,
+{
+	fn on_nonzero_unbalanced(amount: NegativeImbalance<R>) {
+		if let Some(author) = <pallet_authorship::Pallet<R>>::author() {
+			<pallet_balances::Pallet<R>>::resolve_creating(&author, amount);
+		}
+	}
+}
 
 pub struct DealWithFees<R>(sp_std::marker::PhantomData<R>);
 impl<R> OnUnbalanced<NegativeImbalance<R>> for DealWithFees<R>
@@ -56,7 +72,12 @@ mod tests {
 	use crate::AccountId;
 
 	use super::*;
-	use frame_support::{parameter_types, traits::FindAuthor, weights::DispatchClass, PalletId};
+	use frame_support::{
+		parameter_types,
+		traits::{Currency, FindAuthor},
+		weights::DispatchClass,
+		PalletId,
+	};
 	use frame_system::limits;
 	use sp_core::H256;
 	use sp_runtime::{

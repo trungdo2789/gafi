@@ -83,7 +83,6 @@ sp-version = {git = "https://github.com/paritytech/substrate", default-features 
 # Polkadot
 pallet-xcm = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
 polkadot-parachain = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
-polkadot-runtime-common = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
 xcm = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
 xcm-builder = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
 xcm-executor = {git = "https://github.com/paritytech/polkadot", default-features = false, branch = "release-v0.9.26"}
@@ -134,7 +133,6 @@ std = [
   "pallet-xcm/std",
   "parachain-info/std",
   "polkadot-parachain/std",
-  "polkadot-runtime-common/std",
   "sp-api/std",
   "sp-block-builder/std",
   "sp-consensus-aura/std",

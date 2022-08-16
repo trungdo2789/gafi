@@ -28,6 +28,8 @@ pallet-treasury = {version = "4.0.0-dev", git = "https://github.com/paritytech/s
 
 frame-benchmarking = {version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26", default-features = false, optional = true}
 
+gafi-primitives = {path = "../../primitives", default-features = false}
+
 [dev-dependencies]
 pallet-treasury = {version = "4.0.0-dev", git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}
 sp-keystore = {git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26"}

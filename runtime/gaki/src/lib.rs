@@ -48,7 +48,7 @@ use sp_std::{marker::PhantomData, prelude::*};
 use xcm_config::{XcmConfig, XcmOriginToTransactDispatchOrigin};
 
 // Runtime common
-use runtime_common::impls::DealWithFees;
+use runtime_common::{impls::DealWithFees, BlockHashCount, SlowAdjustingFeeUpdate};
 
 // Frontier
 use pallet_ethereum;
@@ -80,9 +80,6 @@ use gafi_primitives::currency::{centi, unit, NativeToken::GAKI};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
-
-// Polkadot imports
-use polkadot_runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
 
 use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 

@@ -22,7 +22,7 @@ use std::{io::Write, net::SocketAddr};
 use gafi_chain_spec::IdentifyVariant;
 use gafi_service::{new_partial, GafiRuntimeExecutor};
 
-use gafi_primitives::types::Block;
+use gafi_primitives::types::{Block, AccountId};
 
 fn load_spec(id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
     Ok(match id {
@@ -394,7 +394,7 @@ false
                 let id = ParaId::from(para_id);
 
                 let parachain_account =
-                    AccountIdConversion::<polkadot_primitives::v2::AccountId>::try_into_account(
+                    AccountIdConversion::<AccountId>::try_into_account(
                         &id,
                     );
 
@@ -673,7 +673,7 @@ pub fn run_gaki() -> Result<()> {
                 let id = ParaId::from(para_id);
 
                 let parachain_account =
-                    AccountIdConversion::<polkadot_primitives::v2::AccountId>::try_into_account(
+                    AccountIdConversion::<AccountId>::try_into_account(
                         &id,
                     );
 

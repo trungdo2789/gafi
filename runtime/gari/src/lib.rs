@@ -88,8 +88,7 @@ use gafi_primitives::currency::{centi, unit, NativeToken::GAFI};
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 
-// Polkadot imports
-use polkadot_runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
+use runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
 
 use nimbus_primitives::{CanAuthor, NimbusId};
 pub use pallet_parachain_staking::{InflationInfo, Range};
