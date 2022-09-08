@@ -37,7 +37,7 @@ use sp_version::RuntimeVersion;
 pub use frame_support::traits::EqualPrivilegeOnly;
 use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{Everything, FindAuthor},
+	traits::{Everything, FindAuthor, ConstU32},
 	weights::{
 		constants::WEIGHT_PER_SECOND, ConstantMultiplier, DispatchClass, Weight,
 		WeightToFeeCoefficient, WeightToFeeCoefficients, WeightToFeePolynomial,
@@ -81,6 +81,7 @@ use pallet_pool_names;
 use sponsored_pool;
 use staking_pool;
 use upfront_pool;
+pub use pallet_join_type;
 
 // Primitives
 use gafi_primitives::currency::{centi, unit, NativeToken::GAFI};
@@ -350,7 +351,11 @@ impl frame_system::Config for Runtime {
 	type OnSetCode = cumulus_pallet_parachain_system::ParachainSetCode<Self>;
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
-
+impl pallet_join_type::Config for Runtime{
+	type Event = Event;
+	type MaxLength = ConstU32<255>;
+	type AddressMapping = ProofAddressMapping;
+}
 parameter_types! {
 	pub const MinimumPeriod: u64 = SLOT_DURATION / 2;
 }
@@ -786,6 +791,8 @@ impl sponsored_pool::Config for Runtime {
 	type MaxPoolOwned = MaxPoolOwned;
 	type MaxPoolTarget = MaxPoolTarget;
 	type WeightInfo = sponsored_pool::weights::SponsoredWeight<Runtime>;
+	type JoinType = JoinType;
+
 }
 
 
@@ -904,7 +911,8 @@ construct_runtime!(
 		ProofAddressMapping: proof_address_mapping::{Pallet, Call, Storage, Event<T>} = 65,
 		PalletCache: pallet_cache::{Pallet, Call, Storage, Event<T>} = 66,
 		PoolName: pallet_pool_names::{Pallet, Call, Storage, Event<T>} = 67,
-		Player: pallet_player::{Pallet, Call, Storage, Event<T>} = 68
+		Player: pallet_player::{Pallet, Call, Storage, Event<T>} = 68,
+		JoinType: pallet_join_type::{Pallet, Call, Storage, Event<T>} = 69,
 	}
 );
 

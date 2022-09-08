@@ -1886,6 +1886,7 @@ dependencies = [
  "pallet-faucet",
  "pallet-grandpa",
  "pallet-hotfix-sufficients",
+ "pallet-join-type",
  "pallet-player",
  "pallet-player-rpc-runtime-api",
  "pallet-pool",
@@ -3580,6 +3581,7 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-faucet",
+ "pallet-join-type",
  "pallet-player",
  "pallet-pool",
  "pallet-pool-names",
@@ -3683,6 +3685,7 @@ dependencies = [
  "pallet-evm-precompile-simple",
  "pallet-faucet",
  "pallet-hotfix-sufficients",
+ "pallet-join-type",
  "pallet-player",
  "pallet-pool",
  "pallet-pool-names",
@@ -5378,6 +5381,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4d2456c373231a208ad294c33dc5bff30051eafd954cd4caae83a712b12854d"
 
 [[package]]
+name = "lite-json"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0e787ffe1153141a0f6f6d759fdf1cc34b1226e088444523812fd412a5cca2"
+dependencies = [
+ "lite-parser",
+]
+
+[[package]]
+name = "lite-parser"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d5f9dc37c52d889a21fd701983d02bb6a84f852c5140a6c80ef4557f7dc29e"
+dependencies = [
+ "paste",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6615,6 +6636,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-join-type"
+version = "4.0.0-dev"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "gafi-primitives",
+ "lite-json",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "proof-address-mapping",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "url",
+]
+
+[[package]]
 name = "pallet-membership"
 version = "4.0.0-dev"
 source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.26#e8a7d161f39db70cb27fdad6c6e215cf493ebc3b"
@@ -6801,10 +6844,12 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-cache",
+ "pallet-join-type",
  "pallet-pool-names",
  "pallet-randomness-collective-flip",
  "pallet-timestamp",
  "parity-scale-codec",
+ "proof-address-mapping",
  "scale-info",
  "serde",
  "sp-core",
@@ -8770,6 +8815,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "gafi-primitives",
  "gu-convertor",
  "gu-currency",
  "gu-ethereum",
@@ -10733,18 +10779,18 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "serde"
-version = "1.0.139"
+version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0171ebb889e45aa68b44aee0859b3eede84c6f5f5c228e6f140c0b2a0a46cad6"
+checksum = "0f747710de3dcd43b88c9168773254e809d8ddbdf9653b84e2554ab219f17860"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.139"
+version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc1d3230c1de7932af58ad8ffbe1d784bd55efd5a9d84ac24f69c72d83543dfb"
+checksum = "94ed3a816fb1d101812f83e789f888322c34e291f894f19590dc310963e87a00"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10753,9 +10799,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.81"
+version = "1.0.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b7ce2b32a1aed03c558dc61a5cd328f15aff2dbc17daad8fb8af04d2100e15c"
+checksum = "e55a28e3aaef9d5ce0506d0a14dbba8054ddc7e499ef522dd8b26859ec9d4a44"
 dependencies = [
  "itoa 1.0.2",
  "ryu",
@@ -11730,10 +11776,12 @@ dependencies = [
  "gu-convertor",
  "gu-currency",
  "pallet-balances",
+ "pallet-join-type",
  "pallet-pool-names",
  "pallet-randomness-collective-flip",
  "pallet-timestamp",
  "parity-scale-codec",
+ "proof-address-mapping",
  "scale-info",
  "serde",
  "sp-core",
@@ -12076,6 +12124,7 @@ dependencies = [
  "pallet-cache",
  "pallet-ethereum",
  "pallet-evm",
+ "pallet-join-type",
  "pallet-player",
  "pallet-pool",
  "pallet-pool-names",
@@ -12678,6 +12727,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

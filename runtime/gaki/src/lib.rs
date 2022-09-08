@@ -31,7 +31,7 @@ use sp_version::RuntimeVersion;
 
 use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{Everything, FindAuthor},
+	traits::{Everything, FindAuthor, ConstU32},
 	weights::{
 		constants::WEIGHT_PER_SECOND, ConstantMultiplier, DispatchClass, Weight,
 		WeightToFeeCoefficient, WeightToFeeCoefficients, WeightToFeePolynomial,
@@ -71,6 +71,7 @@ use gafi_primitives::{
 };
 use gafi_tx::{self, GafiEVMCurrencyAdapter, GafiGasWeightMapping};
 use pallet_cache;
+pub use pallet_join_type;
 use pallet_pool;
 use pallet_pool_names;
 use sponsored_pool;
@@ -343,6 +344,12 @@ impl frame_system::Config for Runtime {
 	/// The action to take on a Runtime Upgrade
 	type OnSetCode = cumulus_pallet_parachain_system::ParachainSetCode<Self>;
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
+}
+
+impl pallet_join_type::Config for Runtime{
+	type Event = Event;
+	type MaxLength = ConstU32<255>;
+	type AddressMapping = ProofAddressMapping;
 }
 
 parameter_types! {
@@ -763,8 +770,8 @@ impl sponsored_pool::Config for Runtime {
 	type MaxPoolOwned = MaxPoolOwned;
 	type MaxPoolTarget = MaxPoolTarget;
 	type WeightInfo = sponsored_pool::weights::SponsoredWeight<Runtime>;
+	type JoinType = JoinType;
 }
-
 
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
@@ -775,7 +782,10 @@ where
 		public: <Signature as sp_runtime::traits::Verify>::Signer,
 		account: AccountId,
 		index: Index,
-	) -> Option<(Call, <UncheckedExtrinsic as sp_runtime::traits::Extrinsic>::SignaturePayload)> {
+	) -> Option<(
+		Call,
+		<UncheckedExtrinsic as sp_runtime::traits::Extrinsic>::SignaturePayload,
+	)> {
 		let period = BlockHashCount::get() as u64;
 		let current_block = System::block_number().saturated_into::<u64>().saturating_sub(1);
 		let tip = 0;
@@ -798,7 +808,14 @@ where
 		let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
 		let address = account;
 		let (call, extra, _) = raw_payload.deconstruct();
-		Some((call, (sp_runtime::MultiAddress::Id(address), signature.into(), extra)))
+		Some((
+			call,
+			(
+				sp_runtime::MultiAddress::Id(address),
+				signature.into(),
+				extra,
+			),
+		))
 	}
 }
 
@@ -880,7 +897,9 @@ construct_runtime!(
 		ProofAddressMapping: proof_address_mapping::{Pallet, Call, Storage, Event<T>} = 65,
 		PalletCache: pallet_cache::{Pallet, Call, Storage, Event<T>} = 66,
 		PoolName: pallet_pool_names::{Pallet, Call, Storage, Event<T>} = 67,
-		Player: pallet_player::{Pallet, Call, Storage, Event<T>} = 68
+		Player: pallet_player::{Pallet, Call, Storage, Event<T>} = 68,
+		JoinType: pallet_join_type::{Pallet, Call, Storage, Event<T>} = 69,
+
 	}
 );
 

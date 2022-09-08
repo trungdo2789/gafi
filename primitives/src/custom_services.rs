@@ -29,6 +29,8 @@ pub trait CustomPool<AccountId> {
 
 	fn get_pool_owner(pool_id: ID)-> Option<AccountId>;
 
+	fn is_can_join( pool_id: ID,sender: AccountId) -> DispatchResult;
+
 	#[cfg(feature = "runtime-benchmarks")]
 	fn add_default(owner: AccountId, pool_id: ID);
 }

@@ -91,6 +91,7 @@ staking-pool = { version = "4.0.0-dev", default-features = false, path = "../../
 upfront-pool = { version = "4.0.0-dev", default-features = false, path = "../../pallets/upfront-pool" }
 pallet-player-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, path = "../../pallets/player/runtime-api" }
 gafi-membership = { version = "4.0.0-dev", default-features = false, path = "../../pallets/gafi-membership" }
+pallet-join-type = { default-features = false, version = "4.0.0-dev", path = "../../pallets/join-type" }
 
 # unit test
 [dev.dependencies]
@@ -177,6 +178,7 @@ std = [
   "sponsored-pool/std",
   "game-creator/std",
   "pallet-pool-names/std",
+  "pallet-join-type/std",
   "gafi-membership/std",
   "runtime-common/std",
   "pallet-hotfix-sufficients/std",

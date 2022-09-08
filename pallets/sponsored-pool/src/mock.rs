@@ -1,10 +1,10 @@
 /*
-* This unittest should only test logic function e.g. Storage, Computation
-* and not related with Currency e.g. Balances, Transaction Payment
-*/
+ * This unittest should only test logic function e.g. Storage, Computation
+ * and not related with Currency e.g. Balances, Transaction Payment
+ */
 
 use crate::{self as sponsored_pool};
-use frame_support::{parameter_types, traits::{ConstU32}};
+use frame_support::{parameter_types, traits::ConstU32};
 use frame_system as system;
 
 use frame_support::{
@@ -12,13 +12,13 @@ use frame_support::{
 	traits::{OnFinalize, OnInitialize},
 };
 use gafi_primitives::currency::{unit, NativeToken::GAKI};
+pub use pallet_balances::Call as BalancesCall;
 use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{BlakeTwo256, IdentityLookup},
 	AccountId32, Permill,
 };
-pub use pallet_balances::Call as BalancesCall;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -37,7 +37,9 @@ frame_support::construct_runtime!(
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
 		Sponsored: sponsored_pool::{Pallet, Storage, Event<T>},
 		PoolNames: pallet_pool_names::{Pallet, Storage, Event<T>},
+		JoinType: pallet_join_type::{Pallet, Storage, Event<T>},
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip,
+		ProofAddressMapping: proof_address_mapping::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -76,7 +78,6 @@ impl pallet_timestamp::Config for Test {
 	type WeightInfo = ();
 }
 
-
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
 	pub const SS58Prefix: u8 = 24;
@@ -109,7 +110,6 @@ impl system::Config for Test {
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
-
 parameter_types! {
 	pub MinPoolBalance: u128 = 1000 * unit(GAKI);
 	pub MinDiscountPercent: Permill = Permill::from_percent(10);
@@ -133,11 +133,13 @@ impl sponsored_pool::Config for Test {
 	type MaxTxLimit = MaxTxLimit;
 	type MinPoolBalance = MinPoolBalance;
 	type WeightInfo = ();
+	type JoinType = JoinType;
 }
 
 pub const RESERVATION_FEE: u128 = 2;
 
 parameter_types! {
+	pub Prefix: &'static [u8] =  b"Bond Aurora Network account:";
 	pub ReservationFee: u128 = RESERVATION_FEE * unit(GAKI);
 }
 impl pallet_pool_names::Config for Test {
@@ -149,6 +151,19 @@ impl pallet_pool_names::Config for Test {
 	type MaxLength = ConstU32<16>;
 }
 
+impl pallet_join_type::Config for Test {
+	type MaxLength = ConstU32<255>;
+	type Event = Event;
+	type AddressMapping = ProofAddressMapping;
+}
+
+impl proof_address_mapping::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type WeightInfo = ();
+	type MessagePrefix = Prefix;
+	type ReservationFee = ReservationFee;
+}
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
@@ -162,7 +177,9 @@ pub fn run_to_block(n: u64) {
 		}
 		System::set_block_number(System::block_number() + 1);
 		System::on_initialize(System::block_number());
-		Timestamp::set_timestamp((System::block_number() as u64 * MILLISECS_PER_BLOCK) + INIT_TIMESTAMP);
+		Timestamp::set_timestamp(
+			(System::block_number() as u64 * MILLISECS_PER_BLOCK) + INIT_TIMESTAMP,
+		);
 	}
 }
 
@@ -184,8 +201,10 @@ impl ExtBuilder {
 	fn build(self) -> sp_io::TestExternalities {
 		let mut storage = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
 
-		let _ = pallet_balances::GenesisConfig::<Test> { balances: self.balances }
-			.assimilate_storage(&mut storage);
+		let _ = pallet_balances::GenesisConfig::<Test> {
+			balances: self.balances,
+		}
+		.assimilate_storage(&mut storage);
 
 		let ext = sp_io::TestExternalities::from(storage);
 		ext

@@ -88,6 +88,7 @@ pub use pallet_pool_names;
 pub use sponsored_pool;
 pub use staking_pool;
 pub use upfront_pool;
+pub use pallet_join_type;
 
 // custom traits
 use gafi_tx::{GafiEVMCurrencyAdapter, GafiGasWeightMapping};
@@ -538,6 +539,7 @@ impl sponsored_pool::Config for Runtime {
 	type MaxPoolOwned = MaxPoolOwned;
 	type MaxPoolTarget = MaxPoolTarget;
 	type WeightInfo = sponsored_pool::weights::SponsoredWeight<Runtime>;
+	type JoinType = JoinType;
 }
 
 parameter_types! {
@@ -698,6 +700,12 @@ impl pallet_pool_names::Config for Runtime {
 	type MinLength = MinLength;
 	type MaxLength = MaxLength;
 	type Event = Event;
+}
+
+impl pallet_join_type::Config for Runtime{
+	type Event = Event;
+	type MaxLength = ConstU32<255>;
+	type AddressMapping = ProofAddressMapping;
 }
 
 parameter_types! {
@@ -1011,6 +1019,7 @@ construct_runtime!(
 		Faucet: pallet_faucet,
 		GameCreator: game_creator,
 		PoolName: pallet_pool_names,
+		JoinType: pallet_join_type,
 		GafiMembership: gafi_membership,
 
 		Democracy: pallet_democracy::{Pallet, Call, Storage, Config<T>, Event<T>},

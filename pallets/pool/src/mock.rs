@@ -29,15 +29,13 @@ use sp_core::{
 		TransactionPoolExt,
 	},
 	sr25519::{self, Signature},
-	H256,
+	H256, H160,
 };
 use sp_io::TestExternalities;
 use sp_runtime::{
 	testing::{Header, TestXt},
-	traits::{
-		BlakeTwo256, Extrinsic as ExtrinsicT, IdentifyAccount, IdentityLookup,
-		Verify,
-	}, Permill,
+	traits::{BlakeTwo256, Extrinsic as ExtrinsicT, IdentifyAccount, IdentityLookup, Verify},
+	Permill,
 };
 
 type Extrinsic = TestXt<Call, ()>;
@@ -65,11 +63,17 @@ frame_support::construct_runtime!(
 		UpfrontPool: upfront_pool::{Pallet, Call, Storage, Event<T>},
 		SponsoredPool: sponsored_pool::{Pallet, Call, Storage, Event<T>},
 		PoolNames: pallet_pool_names::{Pallet, Storage, Event<T>},
+		JoinType: pallet_join_type::{Pallet, Storage, Event<T>},
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip,
-		PalletCache: pallet_cache::{Pallet, Storage, Event<T>}
+		PalletCache: pallet_cache::{Pallet, Storage, Event<T>},
+		ProofAddressMapping: proof_address_mapping::{Pallet, Call, Storage, Event<T>},
 	}
 );
-
+impl pallet_join_type::Config for Test {
+	type MaxLength = ConstU32<255>;
+	type Event = Event;
+	type AddressMapping = ProofAddressMapping;
+}
 pub const EXISTENTIAL_DEPOSIT: u128 = 1000;
 
 impl pallet_randomness_collective_flip::Config for Test {}
@@ -108,6 +112,7 @@ impl pallet_timestamp::Config for Test {
 pub const RESERVATION_FEE: u128 = 2;
 
 parameter_types! {
+	pub Prefix: &'static [u8] =  b"Bond Aurora Network account:";
 	pub ReservationFee: u128 = RESERVATION_FEE * unit(GAKI);
 }
 impl pallet_pool_names::Config for Test {
@@ -117,6 +122,14 @@ impl pallet_pool_names::Config for Test {
 	type Slashed = ();
 	type MinLength = ConstU32<3>;
 	type MaxLength = ConstU32<16>;
+}
+
+impl proof_address_mapping::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type WeightInfo = ();
+	type MessagePrefix = Prefix;
+	type ReservationFee = ReservationFee;
 }
 
 parameter_types! {
@@ -142,6 +155,7 @@ impl sponsored_pool::Config for Test {
 	type MaxTxLimit = MaxTxLimit;
 	type MinPoolBalance = MinPoolBalance;
 	type WeightInfo = ();
+	type JoinType = JoinType;
 }
 
 parameter_types! {

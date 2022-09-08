@@ -29,7 +29,7 @@ pub use gafi_primitives::{
 	constant::ID,
 	custom_services::{CustomPool, CustomService},
 	name::Name,
-	pool::Service,
+	pool::{GetSponsoredPoolJoinType, Service, SponsoredPoolJoinType},
 };
 use gu_convertor::{balance_try_to_u128, into_account};
 use gu_currency::transfer_all;
@@ -67,6 +67,8 @@ pub use weights::*;
 
 #[frame_support::pallet]
 pub mod pallet {
+
+	use gafi_primitives::pool::SponsoredPoolJoinTypeHandle;
 
 	use super::*;
 
@@ -122,6 +124,8 @@ pub mod pallet {
 
 		/// Weight information for extrinsics in this pallet.
 		type WeightInfo: WeightInfo;
+
+		type JoinType: SponsoredPoolJoinTypeHandle<Self::AccountId>;
 	}
 
 	//** Storages **//
@@ -424,8 +428,39 @@ pub mod pallet {
 				Some(pool) => Ok(T::PoolName::kill_name(pool.owner, pool_id)?),
 			}
 		}
-	}
 
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::set_pool_name(50u32))]
+		pub fn set_join_type(
+			origin: OriginFor<T>,
+			pool_id: ID,
+			join_type: SponsoredPoolJoinType,
+			call_check_url: Vec<u8>,
+		) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+			ensure!(Pools::<T>::get(pool_id) != None, <Error<T>>::PoolNotExist);
+			ensure!(
+				Self::is_pool_owner(&pool_id, &sender)?,
+				<Error<T>>::NotTheOwner
+			);
+			T::JoinType::set_join_type(pool_id, join_type, call_check_url, sender)
+		}
+
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::set_pool_name(50u32))]
+		pub fn reset(origin: OriginFor<T>, pool_id: ID) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+			ensure!(Pools::<T>::get(pool_id) != None, <Error<T>>::PoolNotExist);
+			ensure!(
+				Self::is_pool_owner(&pool_id, &sender)?,
+				<Error<T>>::NotTheOwner
+			);
+			T::JoinType::reset(pool_id, sender)
+		}
+	}
+	// impl<T: Config> GetSponsoredPoolJoinType for Pallet<T>{
+	// 	fn get_join_type(pool_id: ID) -> Option<(SponsoredPoolJoinType, Vec<u8>)>{
+	// 		T::JoinType::get_join_type(pool_id)
+	// 	}
+	// }
 	impl<T: Config> Pallet<T> {
 		fn gen_id() -> Result<ID, Error<T>> {
 			let payload = (
@@ -466,6 +501,10 @@ pub mod pallet {
 	}
 
 	impl<T: Config> CustomPool<T::AccountId> for Pallet<T> {
+		fn is_can_join( pool_id: ID,_sender: T::AccountId) -> DispatchResult {
+			ensure!(Pools::<T>::get(pool_id) != None, <Error<T>>::PoolNotExist);
+			T::JoinType::is_can_join_pool(pool_id,_sender)
+		}
 		fn join(_sender: T::AccountId, pool_id: ID) -> DispatchResult {
 			ensure!(Pools::<T>::get(pool_id).is_some(), Error::<T>::PoolNotExist);
 			Ok(())
@@ -489,9 +528,9 @@ pub mod pallet {
 
 		fn get_pool_owner(pool_id: ID) -> Option<T::AccountId> {
 			if let Some(pool) = Pools::<T>::get(pool_id) {
-				return Some(pool.owner);
+				return Some(pool.owner)
 			}
-			return None;
+			return None
 		}
 
 		/// Add new sponsored-pool with default values, return pool_id

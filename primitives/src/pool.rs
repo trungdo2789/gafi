@@ -57,7 +57,8 @@ pub trait SponsoredPoolJoinTypeHandle<AccountId> {
 	) -> DispatchResult;
 	fn reset(pool_id: ID, account_id: AccountId) -> DispatchResult;
 	fn get_join_type(pool_id: ID) -> Option<(SponsoredPoolJoinType, Vec<u8>)>;
+	fn is_can_join_pool(pool_id: ID, account_id: AccountId) -> DispatchResult;
 }
 pub trait GetSponsoredPoolJoinType {
-	fn get_join_type(pool_id: ID) -> (SponsoredPoolJoinType, Vec<u8>);
+	fn get_join_type(pool_id: ID) -> Option<(SponsoredPoolJoinType, Vec<u8>)>;
 }

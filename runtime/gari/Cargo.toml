@@ -38,6 +38,7 @@ proof-address-mapping = {version = "4.0.0-dev", default-features = false, path =
 sponsored-pool = {version = "4.0.0-dev", default-features = false, path = "../../pallets/sponsored-pool"}
 staking-pool = {version = "4.0.0-dev", default-features = false, path = "../../pallets/staking-pool"}
 upfront-pool = {version = "4.0.0-dev", default-features = false, path = "../../pallets/upfront-pool"}
+pallet-join-type = { default-features = false, version = "4.0.0-dev", path = "../../pallets/join-type" }
 
 # Frontier
 fp-rpc = {default-features = false, git = "https://github.com/grindytech/frontier", branch = "gafi-polkadot-v0.9.26"}
@@ -177,6 +178,7 @@ std = [
   "gafi-primitives/std",
   "pallet-collective/std",
   "pallet-scheduler/std",
+  "pallet-join-type/std",
 ]
 
 runtime-benchmarks = [

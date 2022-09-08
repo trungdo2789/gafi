@@ -1,4 +1,4 @@
-use crate as pallet_sponsored_pool_join_type;
+use crate as pallet_join_type;
 use frame_support::{
 	parameter_types,
 	traits::{ConstU32, OnFinalize, OnInitialize},
@@ -8,7 +8,7 @@ use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{BlakeTwo256, IdentityLookup},
-	AccountId32,
+	AccountId32, offchain::{testing::TestOffchainExt, OffchainWorkerExt},
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -22,9 +22,18 @@ frame_support::construct_runtime!(
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-		SponsoredPoolJoin: pallet_sponsored_pool_join_type::{Pallet, Storage, Event<T>},
+		SponsoredPoolJoin: pallet_join_type::{Pallet, Storage, Event<T>},
+		ProofAddressMapping: proof_address_mapping::{Pallet, Call, Storage, Event<T>},
 	}
 );
+
+impl proof_address_mapping::Config for Test {
+	type Event = Event;
+	type Currency = Balances;
+	type WeightInfo = ();
+	type MessagePrefix = Prefix;
+	type ReservationFee = ReservationFee;
+}
 
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
@@ -79,11 +88,13 @@ impl pallet_balances::Config for Test {
 pub const RESERVATION_FEE: u128 = 1;
 
 parameter_types! {
+	pub Prefix: &'static [u8] =  b"Bond Aurora Network account:";
 	pub ReservationFee: u128 = RESERVATION_FEE * unit(GAKI);
 }
-impl pallet_sponsored_pool_join_type::Config for Test {
+impl pallet_join_type::Config for Test {
 	type MaxLength = ConstU32<255>;
 	type Event = Event;
+	type AddressMapping = ProofAddressMapping;
 }
 
 // Build genesis storage according to the mock runtime.
@@ -126,6 +137,12 @@ impl ExtBuilder {
 
 	pub fn build_and_execute(self, test: impl FnOnce() -> ()) {
 		let mut ext = self.build();
+		ext.execute_with(test);
+		ext.execute_with(|| System::set_block_number(1));
+	}
+	pub fn build_and_execute_offchain(self,offchain: TestOffchainExt, test: impl FnOnce() -> ()) {
+		let mut ext = self.build();
+		ext.register_extension(OffchainWorkerExt::new(offchain));
 		ext.execute_with(test);
 		ext.execute_with(|| System::set_block_number(1));
 	}

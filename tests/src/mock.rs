@@ -52,6 +52,7 @@ frame_support::construct_runtime!(
 		PoolNames: pallet_pool_names::{Pallet, Storage, Event<T>},
 		GameCreator: game_creator::{Pallet, Call, Storage, Event<T>},
 		Players: pallet_player::{Pallet, Call, Storage, Event<T>},
+		JoinType: pallet_join_type::{Pallet, Storage, Event<T>},
 	}
 );
 
@@ -204,6 +205,13 @@ impl sponsored_pool::Config for Test {
 	type MaxTxLimit = MaxTxLimit;
 	type MinPoolBalance = MinPoolBalance;
 	type WeightInfo = ();
+	type JoinType = JoinType;
+}
+
+impl pallet_join_type::Config for Test {
+	type MaxLength = ConstU32<255>;
+	type Event = Event;
+	type AddressMapping = ProofAddressMapping;
 }
 
 pub const MILLISECS_PER_BLOCK: u64 = 6000;

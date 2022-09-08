@@ -79,7 +79,9 @@ pub mod pallet {
 	use super::*;
 
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_timestamp::Config + CreateSignedTransaction<Call<Self>>{
+	pub trait Config:
+		frame_system::Config + pallet_timestamp::Config + CreateSignedTransaction<Call<Self>>
+	{
 		/// The overarching event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		/// The currency mechanism.
@@ -159,18 +161,34 @@ pub mod pallet {
 		}
 
 		fn offchain_worker(block_number: T::BlockNumber) {
+
+			// TODO need refactor
+			// ? call multithread
+			// ? how many threads
+			// ? how many transactions per block
+
 			log::info!("Hello from pallet-ocw.");
-
-			for query in Whitelist::<T>::iter() {
+			for (player, pool_id) in Whitelist::<T>::drain() {
 				let call = Call::approve_whitelist_unsigned {
-					player: query.0,
-					pool_id: query.1,
+					player: player.clone(),
+					pool_id: pool_id.clone(),
 				};
-
-				let _ = SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-					.map_err(|_| {
-						log::error!("Failed in offchain_unsigned_tx");
-					});
+				let is_can_join = T::SponsoredPool::is_can_join(pool_id.clone(), player.clone());
+				match is_can_join {
+					Ok(_) => {
+						let _ = SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(
+							call.into(),
+						)
+						.map_err(|_| {
+							log::error!("Failed in offchain_unsigned_tx");
+						});
+						continue
+					},
+					Err(e) => {
+						log::error!("{:?}", e);
+						continue
+					},
+				}
 			}
 		}
 	}
@@ -344,7 +362,10 @@ pub mod pallet {
 
 			Self::join_pool(&player, pool_id)?;
 			Whitelist::<T>::remove(player.clone());
-			Self::deposit_event(Event::<T>::Joined { sender: player, pool_id });
+			Self::deposit_event(Event::<T>::Joined {
+				sender: player,
+				pool_id,
+			});
 			Ok(())
 		}
 
@@ -360,7 +381,10 @@ pub mod pallet {
 
 			Self::join_pool(&player, pool_id)?;
 			Whitelist::<T>::remove(player.clone());
-			Self::deposit_event(Event::<T>::Joined { sender: player, pool_id });
+			Self::deposit_event(Event::<T>::Joined {
+				sender: player,
+				pool_id,
+			});
 			Ok(())
 		}
 

@@ -40,6 +40,7 @@ pallet-transaction-payment = {default-features = false, version = "4.0.0-dev", g
 gu-convertor = {default-features = false, version = "4.0.0-dev", path = "../../utils/convertor"}
 gu-currency = {default-features = false, version = "4.0.0-dev", path = "../../utils/currency"}
 gu-ethereum = {default-features = false, version = "4.0.0-dev", path = "../../utils/ethereum"}
+gafi-primitives = {version = "4.0.0-dev", default-features = false, path = "../../primitives"}
 
 [dev-dependencies]
 hex-literal = "0.2.1"
@@ -69,6 +70,7 @@ std = [
   'gu-ethereum/std',
   'gu-convertor/std',
   'gu-currency/std',
+  'gafi-primitives/std'
 ]
 
 runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks", "hex-literal"]

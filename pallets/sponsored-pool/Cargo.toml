@@ -44,6 +44,8 @@ sp-io = { default-features = false, version = "6.0.0", git = "https://github.com
 sp-runtime = { default-features = false, version = "6.0.0", git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.26" }
 
 pallet-pool-names = { default-features = false, version = "4.0.0-dev", path = "../pool-names" }
+pallet-join-type = { default-features = false, version = "4.0.0-dev", path = "../join-type" }
+proof-address-mapping = {default-features = false, version = "4.0.0-dev", path = "../address-mapping"}
 
 [features]
 default = ["std"]
@@ -64,6 +66,8 @@ std = [
   "pallet-timestamp/std",
   "gu-convertor/std",
   "gu-currency/std",
+  "pallet-join-type/std",
+  "proof-address-mapping/std",
 ]
 
 runtime-benchmarks = [

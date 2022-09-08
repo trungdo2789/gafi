@@ -20,19 +20,19 @@
 use frame_support::{
 	dispatch::DispatchResult,
 	pallet_prelude::*,
+	storage::unhashed::get,
 	traits::{Currency, Get, ReservableCurrency},
-	Twox64Concat,
-	transactional,
+	transactional, Twox64Concat,
 };
 use frame_system::pallet_prelude::*;
-pub use pallet::*;
-use pallet_evm::AddressMapping;
-use sp_core::crypto::AccountId32;
-use sp_core::H160;
-use sp_io::hashing::blake2_256;
-use gu_ethereum::{eth_recover, to_ascii_hex, EcdsaSignature, EthereumAddress};
+use gafi_primitives::address_mapping::EVMAddressMapping;
 use gu_convertor::into_account;
 use gu_currency::transfer_all;
+use gu_ethereum::{eth_recover, to_ascii_hex, EcdsaSignature, EthereumAddress};
+pub use pallet::*;
+use pallet_evm::AddressMapping;
+use sp_core::{crypto::AccountId32, H160};
+use sp_io::hashing::blake2_256;
 
 #[cfg(test)]
 mod mock;
@@ -118,11 +118,13 @@ pub mod pallet {
 		/// The origin must be Signed
 		///
 		/// Parameters:
-		/// - `signature`: signature of the address that signed the message contain hex format of origin
+		/// - `signature`: signature of the address that signed the message contain hex format of
+		///   origin
 		///
 		/// - `address`: EVM(H160) address that you want to bond
 		///
-		/// - `withdraw`: true/false withdraw all the balance of original account of address trasfer to
+		/// - `withdraw`: true/false withdraw all the balance of original account of address trasfer
+		///   to
 		/// the origin, always KeepAlive original address
 		///
 		/// Emits `Bonded` event when successful.
@@ -140,8 +142,8 @@ pub mod pallet {
 			let account_id: AccountId32 = sender.clone().into();
 
 			ensure!(
-				Id32Mapping::<T>::get(account_id.clone()).is_none()
-					&& H160Mapping::<T>::get(address).is_none(),
+				Id32Mapping::<T>::get(account_id.clone()).is_none() &&
+					H160Mapping::<T>::get(address).is_none(),
 				<Error<T>>::AlreadyBond
 			);
 			ensure!(
@@ -185,7 +187,10 @@ pub mod pallet {
 			<T as pallet::Config>::Currency::unreserve(&sender, T::ReservationFee::get());
 
 			Self::remove_pair_bond(evm_address.unwrap(), id32_address.unwrap());
-			Self::deposit_event(Event::Unbonded { sender, address: evm_address.unwrap() });
+			Self::deposit_event(Event::Unbonded {
+				sender,
+				address: evm_address.unwrap(),
+			});
 			Ok(())
 		}
 	}
@@ -250,7 +255,6 @@ where
 		<H160Mapping<T>>::remove(origin_address);
 		<Id32Mapping<T>>::remove(origin_account_id);
 	}
-
 }
 
 struct OriginAddressMapping;
@@ -274,5 +278,29 @@ where
 		} else {
 			OriginAddressMapping::into_account_id(address)
 		}
+	}
+}
+
+impl<T: Config> EVMAddressMapping<AccountId32, H160> for Pallet<T>
+where
+	[u8; 32]: From<T::AccountId>,
+	AccountId32: From<T::AccountId>,
+{
+	fn get_evm_address_mapping(account_id: AccountId32) -> Option<H160> {
+		<Id32Mapping<T>>::get(account_id)
+	}
+
+	fn get_account_mapping(address: H160) -> Option<AccountId32> {
+		<H160Mapping<T>>::get(address)
+	}
+
+	fn insert_pair(address: H160, account_id: AccountId32) -> DispatchResult {
+		Self::insert_pair_bond(address, account_id);
+		Ok(())
+	}
+
+	fn remove_pair(address: H160, account_id: AccountId32) -> DispatchResult {
+		Self::remove_pair_bond(address, account_id);
+		Ok(())
 	}
 }

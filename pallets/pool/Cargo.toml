@@ -35,6 +35,8 @@ sp-std = {version = "4.0.0-dev", default-features = false, git = "https://github
 # Local
 gafi-primitives = {version = "4.0.0-dev", default-features = false, path = "../../primitives"}
 pallet-cache = {version = "4.0.0-dev", default-features = false, path = "../pallet-cache"}
+pallet-join-type = { default-features = false, version = "4.0.0-dev", path = "../join-type" }
+proof-address-mapping = {default-features = false, version = "4.0.0-dev", path = "../address-mapping"}
 
 [dev-dependencies]
 gu-mock = {default-features = false, version = "4.0.0-dev", path = "../../utils/mock"}
@@ -72,6 +74,8 @@ std = [
   "pallet-cache/std",
   "pallet-randomness-collective-flip/std",
   "sp-runtime/std",
+  "pallet-join-type/std",
+  "proof-address-mapping/std"
 ]
 
 runtime-benchmarks = [
